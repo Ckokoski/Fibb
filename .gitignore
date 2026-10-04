@@ -41,3 +41,5 @@ author-os/
 scripts/FULL-TEST-CHECKLIST.md
 ROADMAP.md
 dashboard/dist/index.html.bak
+
+.superpowers/
