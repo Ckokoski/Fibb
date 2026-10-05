@@ -62,6 +62,10 @@ Three sources:
 2. **Goal-derived:** each book has a goal (e.g. "finish draft by Dec 1"). Fibb derives the next step: draft next chapter, continuity pass on the last three, resolve open research questions, update the bible.
 3. **Fibb-proposed:** from facts, goals, inbox, and calendar: "I noticed your agent-query deadline is Friday and you have no synopsis. Want me to draft one tonight?" Proposals wait for a yes.
 
+**Goals.** A goal is a stated outcome with an optional date, attached to a book or standalone ("finish draft by Dec 1", "query 20 agents by March", "write 500 words every weekday"). Goals drive task derivation (above), progress in the Tonight panel, and celebrations. The user creates goals in chat or in the app; Fibb may propose one when it hears an intention.
+
+**Ideas.** A capture inbox. "Fibb, idea: a lighthouse keeper who..." files the idea with the date and any book it seems related to. Ideas are listed in the app, can be expanded on request ("flesh out idea 3"), and Fibb may surface one when it fits ("you had an idea in August that would solve this subplot"). Ideas can be promoted to a book, a task, or a goal with one action.
+
 **Schedules.** Any task can carry a cron expression. The existing `cron-scheduler.ts` runs them. Users manage schedules in chat ("change my brief to 6:30") and in the app's Tonight panel. Defaults: morning brief daily, inbox triage daily if Gmail is connected, bible refresh weekly.
 
 **Night shift** (`services/night-shift.ts`). A window (default 23:00–06:00, configurable; also runs when the user has been idle for 2h if enabled). Picks queued tasks in priority order, executes through the existing step executor and quality services, writes results to the Review inbox. Rules:
@@ -91,7 +95,11 @@ Three sources:
 
 **Browser control and desktop files:** behind a capability switch per source, off by default. Browser: a headless session Fibb can drive for research and form-filling, every navigation logged, no credentials typed. Files: a user-approved allowlist of folders. Both reuse the existing confirmation gate; the gate prompt appears in chat and in the app.
 
+**Built-in skills.** Fibb ships pre-populated with the author skills that already exist in `skills/author/` and are auto-matched by keyword on every message: premise, outline, story structures, write, revise, dialogue, book-bible, continuity-check, beta-reader, style-clone, research, nonfiction-research, format, manuscript-hub, cover-designer, plus `marketing/blurb-writer`. Every built-in skill can be edited, disabled, deleted, or replaced by the user in Settings → Skills (a plain editor over the `SKILL.md`) or by asking Fibb in chat ("make the revise skill stop suggesting adverb cuts"). User edits live in `skills/user/` and override the built-in of the same name, so a reset is always possible.
+
 **Teachable skills:** "Fibb, learn this: every Friday pull my KDP sales and tell me the trend." Fibb writes a `SKILL.md` draft (existing skill-drafts route), shows it, and activates it on approval. Skills remain prompt-text plus optional tool allowances.
+
+**Credentials without friction.** Fibb never asks for a username and password. Connectors with an API use the provider's own sign-in (Google OAuth, Notion OAuth) from a button in Settings; the token goes in the vault and refreshes itself. Platforms with no API (KDP, Substack, agent-query portals) are reached through the browser capability using a persistent Fibb browser profile: the user signs in there once, with their Google account if that is how they registered, and Fibb reuses the session. Fibb never types or stores a password, and the profile is local to the machine.
 
 **Fibb as MCP server:** `gateway/src/mcp-server.ts` exposes `chat`, `queue_task`, `get_brief`, `search_manuscript`, `check_continuity`, so Claude or ChatGPT can delegate to Fibb.
 
@@ -116,13 +124,14 @@ Warm writing buddy. First-name basis, curious, celebrates small wins, honest abo
 
 **Look: Night Desk.** Charcoal surfaces, warm amber accent, generous spacing, soft shadows, 12px radii. Dark by default, light variant via `prefers-color-scheme` and a toggle. No gradients, no glassmorphism, no emoji-as-icons.
 
-**Layout:** slim left rail (Chat, Books, Review, Settings), conversation centered with a max line length, right panel "Tonight" showing the queue, schedules, streak, and the mascot. Under 900px the rail becomes a bottom tab bar and the Tonight panel becomes a sheet.
+**Layout:** slim left rail (Chat, Books, Ideas, Review, Settings), conversation centered with a max line length, right panel "Tonight" showing goals and progress, the task queue, schedules, streak, and the mascot. Under 900px the rail becomes a bottom tab bar and the Tonight panel becomes a sheet.
 
 **Views:**
 - **Chat (home):** streaming messages, mic, attach, read-aloud toggle, quick chips ("Check chapter 10", "What's on tonight?", "Brainstorm a premise"). History persists.
 - **Books:** each book as a card with stage, goal, progress; opens to chapters with inline Check and Revise actions and a readable chapter view.
+- **Ideas:** the capture inbox; each idea can be expanded, promoted to a book, task, or goal, or archived.
 - **Review:** the inbox of overnight results; accept, discard, or discuss each one in chat.
-- **Settings:** connections (keys and connectors), capabilities (browser, files, sending), schedules, voice, appearance.
+- **Settings:** connections (provider keys, one-click OAuth connectors), capabilities (browser, files, sending), skills (edit, disable, reset built-ins; manage taught skills), schedules, voice, appearance.
 
 **Mascot:** four states (idle, thinking, working overnight, celebrating) as PNG/SVG, generated by Chris from the brief in Appendix A. Shown in the Tonight panel, the empty states, and the morning brief in the app.
 
