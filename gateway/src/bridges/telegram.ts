@@ -16,7 +16,11 @@ interface CommandHandlers {
   autoRunProject: (projectId: string, statusCallback: (msg: string) => Promise<void>) => Promise<void>;
   listProjects: () => Array<{ id: string; title: string; status: string; progress: string }>;
   saveToFile: (filename: string, content: string) => Promise<void>;
-  handleMessage: (content: string, channel: string, respond: (text: string) => void) => Promise<void>;
+  handleMessage: (
+    content: string, channel: string, respond: (text: string) => void,
+    extraContext?: string, overrideTaskType?: string, preferredProvider?: string,
+    onChunk?: (chunk: string) => void,
+  ) => Promise<void>;
   research: (query: string) => Promise<{ results: string; error?: string }>;
   listFiles: (subdir?: string) => Promise<string[]>;
   readFile: (filename: string) => Promise<{ content: string; error?: string }>;
@@ -27,7 +31,11 @@ export class TelegramBridge {
   private config: TelegramConfig;
   private pollingInterval: ReturnType<typeof setInterval> | null = null; // Legacy compat
   private polling = false;
-  private messageHandler?: (content: string, channel: string, respond: (text: string) => void) => Promise<void>;
+  private messageHandler?: (
+    content: string, channel: string, respond: (text: string) => void,
+    extraContext?: string, overrideTaskType?: string, preferredProvider?: string,
+    onChunk?: (chunk: string) => void,
+  ) => Promise<void>;
   private commandHandlers?: CommandHandlers;
   private lastUpdateId = 0;
   public pauseRequested = false;
@@ -44,7 +52,11 @@ export class TelegramBridge {
     };
   }
 
-  onMessage(handler: (content: string, channel: string, respond: (text: string) => void) => Promise<void>) {
+  onMessage(handler: (
+    content: string, channel: string, respond: (text: string) => void,
+    extraContext?: string, overrideTaskType?: string, preferredProvider?: string,
+    onChunk?: (chunk: string) => void,
+  ) => Promise<void>) {
     this.messageHandler = handler;
   }
 
@@ -467,7 +479,7 @@ export class TelegramBridge {
     // ── /voice — Toggle voice responses for chat messages ──
     if (text.startsWith('/voice')) {
       const args = text.replace(/^\/voice\s*/, '').trim().toLowerCase();
-      const voicePresets = ['narrator_female', 'narrator_male', 'narrator_deep', 'narrator_warm', 'british_male', 'british_female', 'storyteller', 'dramatic'];
+      const voicePresets = ['narrator_female', 'narrator_male', 'narrator_deep', 'narrator_warm', 'british_male', 'british_female', 'storyteller'];
 
       if (args === 'off' || args === 'stop' || args === 'disable') {
         this.voiceMode.delete(chatId);
@@ -498,14 +510,14 @@ export class TelegramBridge {
           `/speak Hello, I am Fibb\n` +
           `/speak narrator_deep In a world...\n` +
           `/speak 3 — Read file #3 aloud\n\n` +
-          `*Voices:* narrator_female, narrator_male, narrator_deep, narrator_warm, british_male, british_female, storyteller, dramatic`);
+          `*Voices:* narrator_female, narrator_male, narrator_deep, narrator_warm, british_male, british_female, storyteller`);
         return;
       }
 
       try {
         // Parse: optional voice preset as first word, then text (or file number)
         const words = args.split(/\s+/);
-        const voicePresets = ['narrator_female', 'narrator_male', 'narrator_deep', 'narrator_warm', 'british_male', 'british_female', 'storyteller', 'dramatic'];
+        const voicePresets = ['narrator_female', 'narrator_male', 'narrator_deep', 'narrator_warm', 'british_male', 'british_female', 'storyteller'];
         let voice: string | undefined;
         let speakText = args;
 
@@ -618,27 +630,82 @@ export class TelegramBridge {
       return;
     }
 
-    // ── Regular message — conversational chat via AI ──
+    // ── Regular message — conversational chat via AI (streamed into one edited message) ──
     if (this.messageHandler) {
-      // Prepend brevity instruction so AI keeps it short for Telegram
-      const telegramPrompt = `[Telegram chat — keep your response SHORT and conversational, like texting a friend. 2-4 sentences max. No headers, no bullet lists, no essays. Only write long responses if the user explicitly asks for a full chapter, story, or detailed breakdown.]\n\n${text}`;
+      const telegramPrompt = `[Telegram chat — keep it short and conversational, like texting a friend. 2-4 sentences unless the user asks for a full chapter or detailed breakdown.]
+
+${text}`;
+      await this.sendChatAction(chatId, 'typing');
+
+      let draftId: number | undefined;
+      let buffer = '';
+      let lastEdit = 0;
+      let editTimer: NodeJS.Timeout | null = null;
+      const flush = async () => {
+        if (!buffer.trim()) return;
+        const shown = buffer.length > 4000 ? buffer.slice(0, 4000) + '…' : buffer;
+        if (draftId === undefined) draftId = await this.sendPlain(chatId, shown);
+        else await this.editPlain(chatId, draftId, shown);
+        lastEdit = Date.now();
+      };
+      const onChunk = (chunk: string) => {
+        buffer += chunk;
+        if (Date.now() - lastEdit > 1000 && !editTimer) {
+          editTimer = setTimeout(() => { editTimer = null; flush().catch(() => {}); }, 50);
+        }
+      };
+
       await this.messageHandler(
         telegramPrompt,
         `telegram:${chatId}`,
         async (response) => {
-          // sendMessage auto-splits at 4096 chars (Telegram's real limit)
-          await this.sendMessage(chatId, response);
-
-          // Store last response for "read that back" requests
+          if (editTimer) { clearTimeout(editTimer); editTimer = null; }
+          if (draftId !== undefined && response.length <= 4000) {
+            await this.editPlain(chatId, draftId, response);
+          } else {
+            if (draftId !== undefined) await this.editPlain(chatId, draftId, response.slice(0, 4000));
+            else await this.sendMessage(chatId, response);
+            if (response.length > 4000) await this.sendMessage(chatId, response.slice(4000));
+          }
           this.lastResponse.set(chatId, response);
-
-          // Voice mode: also send as voice message
           if (this.voiceMode.has(chatId)) {
             await this.generateAndSendVoice(chatId, response, this.voiceMode.get(chatId));
           }
-        }
+        },
+        undefined, undefined, undefined,
+        onChunk,
       );
     }
+  }
+
+  private async sendChatAction(chatId: number, action: 'typing' | 'record_voice' = 'typing'): Promise<void> {
+    try {
+      await fetch(`https://api.telegram.org/bot${this.token}/sendChatAction`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, action }),
+      });
+    } catch { /* cosmetic */ }
+  }
+
+  /** Send a message and return its message_id (undefined on failure). Plain text, no parse_mode. */
+  private async sendPlain(chatId: number, text: string): Promise<number | undefined> {
+    try {
+      const r = await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, text }),
+      });
+      const data = await r.json() as any;
+      return data?.result?.message_id;
+    } catch { return undefined; }
+  }
+
+  private async editPlain(chatId: number, messageId: number, text: string): Promise<void> {
+    try {
+      await fetch(`https://api.telegram.org/bot${this.token}/editMessageText`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, message_id: messageId, text }),
+      });
+    } catch { /* ignore edit races */ }
   }
 
   private async sendMessage(chatId: number, text: string): Promise<void> {

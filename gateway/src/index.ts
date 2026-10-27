@@ -936,8 +936,8 @@ class FibbGateway {
       const token = await this.vault.get('telegram_bot_token');
       if (token) {
         this.telegram = new TelegramBridge(token, this.config.get('bridges.telegram'));
-        this.telegram.onMessage((content, channel, respond) =>
-          this.handleMessage(content, channel, respond)
+        this.telegram.onMessage((content, channel, respond, extra, task, provider, onChunk) =>
+          this.handleMessage(content, channel, respond, extra, task, provider, onChunk)
         );
         this.telegram.setCommandHandlers(commandHandlers);
         await this.telegram.connect();
@@ -1670,8 +1670,8 @@ class FibbGateway {
         allowedUsers: this.config.get('bridges.telegram.allowedUsers', []),
         pairingEnabled: this.config.get('bridges.telegram.pairingEnabled', true),
       });
-      this.telegram.onMessage((content, channel, respond) =>
-        this.handleMessage(content, channel, respond)
+      this.telegram.onMessage((content, channel, respond, extra, task, provider, onChunk) =>
+        this.handleMessage(content, channel, respond, extra, task, provider, onChunk)
       );
       this.telegram.setCommandHandlers(this.buildTelegramCommandHandlers());
       await this.telegram.connect();
