@@ -594,6 +594,13 @@ export class AIRouter {
     const provider = this.providers.get(request.provider);
     if (!provider) throw new Error(`Provider ${request.provider} not found`);
 
+    // reasoning-effort requests keep full parity by using the non-streaming path
+    if (request.thinking) {
+      const res = await this.complete(request);
+      onChunk(res.text);
+      return res;
+    }
+
     const streams = ['ollama', 'gemini', 'deepseek', 'openai', 'openrouter'].includes(provider.id);
     if (!streams) {
       // complete() does its own cache tracking; don't double count.
@@ -694,7 +701,7 @@ export class AIRouter {
       for (const p of parts) {
         if (typeof p?.text === 'string' && p.text) { text += p.text; onChunk(p.text); }
       }
-      if (obj?.usageMetadata?.totalTokenCount) tokens = obj.usageMetadata.totalTokenCount;
+      if (obj?.usageMetadata) tokens = (obj.usageMetadata.promptTokenCount || 0) + (obj.usageMetadata.candidatesTokenCount || 0);
     });
     if (!text.trim()) throw new Error('Gemini returned an empty response.');
     // Same as completeGemini: free tier, no cost.
@@ -732,6 +739,7 @@ export class AIRouter {
     let text = '';
     let inputTokens = 0;
     let outputTokens = 0;
+    let totalTokens = 0;
     await readSse(response.body, (obj) => {
       if (obj?.error) throw new Error(`${provider.name} API error: ${obj.error.message || 'Unknown error'}`);
       const delta: string = obj?.choices?.[0]?.delta?.content || '';
@@ -739,12 +747,13 @@ export class AIRouter {
       if (obj?.usage) {
         inputTokens = obj.usage.prompt_tokens || 0;
         outputTokens = obj.usage.completion_tokens || 0;
+        totalTokens = obj.usage.total_tokens || 0;
       }
     });
     if (!text.trim()) throw new Error(`${provider.name} returned an empty response.`);
     return {
       text,
-      tokensUsed: inputTokens + outputTokens,
+      tokensUsed: inputTokens + outputTokens || totalTokens,
       estimatedCost: (inputTokens / 1000) * provider.costPer1kInput +
                      (outputTokens / 1000) * provider.costPer1kOutput,
       provider: provider.id,
