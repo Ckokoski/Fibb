@@ -1,8 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { rename } from 'fs/promises';
 import { ChatHistoryStore } from './chat-history.js';
+
+// Wrap rename so one test can make it fail; everything else passes through.
+vi.mock('fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs/promises')>();
+  return { ...actual, rename: vi.fn(actual.rename) };
+});
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'fibb-history-')); });
@@ -50,11 +57,44 @@ describe('ChatHistoryStore', () => {
     expect(loaded[0].content).toBe('ok');
   });
 
+  it('skips entries with a missing or unparseable timestamp, and a later save succeeds', async () => {
+    mkdirSync(join(dir, 'history'), { recursive: true });
+    writeFileSync(join(dir, 'history', 'webchat.json'), JSON.stringify([
+      { role: 'user', content: 'x' },
+      { role: 'user', content: 'y', timestamp: '2026-01-01T00:00:00.000Z' },
+    ]));
+    const store = new ChatHistoryStore(dir);
+    const loaded = await store.load('webchat');
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].content).toBe('y');
+    await expect(store.save('webchat', loaded)).resolves.toBeUndefined();
+  });
+
+  it('quarantines a valid-JSON non-array file and returns empty', async () => {
+    mkdirSync(join(dir, 'history'), { recursive: true });
+    writeFileSync(join(dir, 'history', 'webchat.json'), '{"a":1}');
+    const store = new ChatHistoryStore(dir);
+    expect(await store.load('webchat')).toEqual([]);
+    expect(readdirSync(join(dir, 'history')).some(f => /^webchat\.json\.corrupt-/.test(f))).toBe(true);
+  });
+
   it('quarantines a corrupt history file and returns empty', async () => {
     mkdirSync(join(dir, 'history'), { recursive: true });
     writeFileSync(join(dir, 'history', 'webchat.json'), '{{{ not json');
     const store = new ChatHistoryStore(dir);
     expect(await store.load('webchat')).toEqual([]);
     expect(readdirSync(join(dir, 'history')).some(f => /^webchat\.json\.corrupt-/.test(f))).toBe(true);
+  });
+
+  it('rejects (not throws synchronously) when a message has an invalid timestamp', async () => {
+    const store = new ChatHistoryStore(dir);
+    await expect(store.save('c', [{ role: 'user', content: 'x', timestamp: new Date('invalid') }])).rejects.toThrow();
+  });
+
+  it('rejects and leaves no temp file when rename fails', async () => {
+    const store = new ChatHistoryStore(dir);
+    vi.mocked(rename).mockRejectedValueOnce(new Error('disk full'));
+    await expect(store.save('webchat', [{ role: 'user', content: 'x', timestamp: new Date() }])).rejects.toThrow('disk full');
+    expect(readdirSync(join(dir, 'history')).filter(f => f.endsWith('.tmp'))).toEqual([]);
   });
 });

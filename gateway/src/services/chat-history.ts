@@ -26,7 +26,8 @@ async function writeAtomic(file: string, data: string): Promise<void> {
 
 const isEntry = (m: unknown): m is { role: string; content: string; timestamp: string } =>
   typeof m === 'object' && m !== null && !Array.isArray(m) &&
-  typeof (m as any).role === 'string' && typeof (m as any).content === 'string';
+  typeof (m as any).role === 'string' && typeof (m as any).content === 'string' &&
+  typeof (m as any).timestamp === 'string' && !Number.isNaN(Date.parse((m as any).timestamp));
 
 export class ChatHistoryStore {
   private dir: string;
@@ -53,6 +54,7 @@ export class ChatHistoryStore {
     }
     if (!Array.isArray(raw)) {
       logger.warn(`chat history for ${channel} is not an array, starting empty`);
+      await quarantine(file);
       return [];
     }
     return raw
@@ -60,8 +62,8 @@ export class ChatHistoryStore {
       .map(m => ({ role: m.role, content: m.content, timestamp: new Date(m.timestamp) }));
   }
 
-  /** Writes for this store run one at a time; the returned promise settles when this write lands. */
-  save(channel: string, messages: HistoryMessage[]): Promise<void> {
+  /** Writes for this store run one at a time; every failure, including bad input, surfaces as a rejection. */
+  async save(channel: string, messages: HistoryMessage[]): Promise<void> {
     const trimmed = messages.slice(-this.maxMessages).map(m => ({
       role: m.role, content: m.content, timestamp: m.timestamp.toISOString(),
     }));
