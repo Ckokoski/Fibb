@@ -20,6 +20,7 @@ export class MemoryService {
   private config: MemoryConfig;
   private conversationSummaries: string[] = [];
   private activeProjectPath: string | null = null;
+  private bibleCache = new Map<string, { mtimeMs: number; content: string }>();
   private activePersonaId: string | null = null;
 
   constructor(memoryDir: string, config: Partial<MemoryConfig>) {
@@ -96,8 +97,16 @@ export class MemoryService {
 
         // Read all files and score by keyword relevance
         const scored: { file: string; content: string; score: number }[] = [];
+        const { stat } = await import('fs/promises');
         for (const file of files) {
-          const content = await readFile(join(biblePath, file), 'utf-8');
+          const full = join(biblePath, file);
+          const { mtimeMs } = await stat(full);
+          let cached = this.bibleCache.get(full);
+          if (!cached || cached.mtimeMs !== mtimeMs) {
+            cached = { mtimeMs, content: await readFile(full, 'utf-8') };
+            this.bibleCache.set(full, cached);
+          }
+          const content = cached.content;
           let score = 0;
           if (queryWords.length > 0) {
             const lowerFile = file.toLowerCase();

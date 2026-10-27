@@ -318,7 +318,7 @@ describe('total budget guard trim ordering (Chunk B2)', () => {
     expect(system).toContain('SOUL_IDENTITY_TEXT');       // soul
     expect(system).toContain('# CORE STORY MEMORY');      // CORE block
     expect(system).toContain('ACTIVE_PROJECT_BLURB');     // active project
-    expect(system).toContain('# Security Rules');         // security section
+    expect(system).toContain('# How you work');          // how-you-work section
   });
 
   it('drops ONLY lessons (highest-to-trim) when a single drop suffices — prefs/user-model survive', async () => {

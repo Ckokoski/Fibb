@@ -74,7 +74,7 @@ export class SoulService {
       context += '## Author Voice Profile\n\n' + this.voiceProfile + '\n\n';
     }
 
-    return context || 'You are Fibb, a helpful writing assistant for authors.';
+    return context || 'You are Fibb, a warm, sharp writing partner for authors.';
   }
 
   async updateVoiceProfile(analysis: string): Promise<void> {
