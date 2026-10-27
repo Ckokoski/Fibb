@@ -632,7 +632,7 @@ export class TelegramBridge {
 
     // ── Regular message — conversational chat via AI (streamed into one edited message) ──
     if (this.messageHandler) {
-      const telegramPrompt = `[Telegram chat — keep it short and conversational, like texting a friend. 2-4 sentences unless the user asks for a full chapter or detailed breakdown.]
+      const telegramPrompt = `[Telegram chat — keep your response SHORT and conversational, like texting a friend. 2-4 sentences max. No headers, no bullet lists, no essays. Only write long responses if the user explicitly asks for a full chapter, story, or detailed breakdown.]
 
 ${text}`;
       await this.sendChatAction(chatId, 'typing');
@@ -641,17 +641,20 @@ ${text}`;
       let buffer = '';
       let lastEdit = 0;
       let editTimer: NodeJS.Timeout | null = null;
+      let done = false;
+      let flushPromise: Promise<void> = Promise.resolve();
       const flush = async () => {
-        if (!buffer.trim()) return;
+        if (done || !buffer.trim()) return;
         const shown = buffer.length > 4000 ? buffer.slice(0, 4000) + '…' : buffer;
         if (draftId === undefined) draftId = await this.sendPlain(chatId, shown);
         else await this.editPlain(chatId, draftId, shown);
         lastEdit = Date.now();
       };
       const onChunk = (chunk: string) => {
+        if (done) return;
         buffer += chunk;
         if (Date.now() - lastEdit > 1000 && !editTimer) {
-          editTimer = setTimeout(() => { editTimer = null; flush().catch(() => {}); }, 50);
+          editTimer = setTimeout(() => { editTimer = null; flushPromise = flush().catch(() => {}); }, 50);
         }
       };
 
@@ -659,12 +662,15 @@ ${text}`;
         telegramPrompt,
         `telegram:${chatId}`,
         async (response) => {
+          done = true;
           if (editTimer) { clearTimeout(editTimer); editTimer = null; }
+          await flushPromise;
           if (draftId !== undefined && response.length <= 4000) {
-            await this.editPlain(chatId, draftId, response);
+            if (!(await this.editPlain(chatId, draftId, response))) await this.sendMessage(chatId, response);
           } else {
-            if (draftId !== undefined) await this.editPlain(chatId, draftId, response.slice(0, 4000));
-            else await this.sendMessage(chatId, response);
+            if (draftId !== undefined) {
+              if (!(await this.editPlain(chatId, draftId, response.slice(0, 4000)))) await this.sendMessage(chatId, response.slice(0, 4000));
+            } else await this.sendMessage(chatId, response.slice(0, 4000));
             if (response.length > 4000) await this.sendMessage(chatId, response.slice(4000));
           }
           this.lastResponse.set(chatId, response);
@@ -699,13 +705,17 @@ ${text}`;
     } catch { return undefined; }
   }
 
-  private async editPlain(chatId: number, messageId: number, text: string): Promise<void> {
+  /** Edit a message. True on success or "message is not modified"; false otherwise. */
+  private async editPlain(chatId: number, messageId: number, text: string): Promise<boolean> {
     try {
-      await fetch(`https://api.telegram.org/bot${this.token}/editMessageText`, {
+      const r = await fetch(`https://api.telegram.org/bot${this.token}/editMessageText`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ chat_id: chatId, message_id: messageId, text }),
       });
-    } catch { /* ignore edit races */ }
+      if (r.ok) return true;
+      const data = await r.json().catch(() => null) as any;
+      return String(data?.description || '').includes('message is not modified');
+    } catch { return false; }
   }
 
   private async sendMessage(chatId: number, text: string): Promise<void> {
