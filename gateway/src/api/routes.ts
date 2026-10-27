@@ -37,15 +37,10 @@ import { registerManuscriptQualityRoutes } from './routes/manuscript-quality.js'
 import { registerMemorySearchRoutes } from './routes/memory-search.js';
 import { registerUserModelRoutes } from './routes/user-model.js';
 import { registerCronRoutes } from './routes/cron.js';
-import { registerSkillDraftRoutes } from './routes/skill-drafts.js';
 import { registerJudgeCharacterVoiceRoutes } from './routes/judge-character-voices.js';
 import { registerResearchLookupRoutes } from './routes/research-lookup.js';
-import { registerVideoResearchRoutes } from './routes/video-research.js';
 import { registerStructuresPlotRoutes } from './routes/structures-plot.js';
-import { registerWave3GatedRoutes } from './routes/wave3-gated.js';
-import { registerWebsiteRoutes } from './routes/website.js';
 import { registerReaderPanelRoutes } from './routes/reader-panel.js';
-import { registerReaderFeedbackRoutes } from './routes/reader-feedback.js';
 
 export function createAPIRoutes(app: Application, gateway: any, rootDir?: string): void {
   const ctx = createApiContext(app, gateway, rootDir);
@@ -70,13 +65,8 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   registerMemorySearchRoutes(ctx);
   registerUserModelRoutes(ctx);
   registerCronRoutes(ctx);
-  registerSkillDraftRoutes(ctx);
   registerJudgeCharacterVoiceRoutes(ctx);
   registerResearchLookupRoutes(ctx);
-  registerVideoResearchRoutes(ctx);
   registerStructuresPlotRoutes(ctx);
-  registerWave3GatedRoutes(ctx);
-  registerWebsiteRoutes(ctx);
   registerReaderPanelRoutes(ctx);
-  registerReaderFeedbackRoutes(ctx);
 }
