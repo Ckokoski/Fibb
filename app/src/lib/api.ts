@@ -42,6 +42,7 @@ export interface Facts {
 
 export async function getFacts(): Promise<Facts> {
   const r = await fetch('/api/facts');
+  if (!r.ok) return { books: [], people: [], preferences: [], recent: [] };
   return r.json();
 }
 

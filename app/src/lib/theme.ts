@@ -2,7 +2,7 @@ export type Theme = 'dark' | 'light' | 'system';
 const KEY = 'fibb_theme';
 
 export function getTheme(): Theme {
-  try { return (localStorage.getItem(KEY) as Theme) || 'system'; } catch { return 'system'; }
+  try { const v = localStorage.getItem(KEY); return v === 'dark' || v === 'light' || v === 'system' ? v : 'system'; } catch { return 'system'; }
 }
 
 export function applyTheme(t: Theme): void {

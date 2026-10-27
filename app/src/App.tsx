@@ -30,7 +30,7 @@ export function App() {
             <a className="pill" href="/legacy/" title="Previous dashboard">Legacy</a>
           </div>
         </header>
-        {view === 'chat' && <ChatView onTurn={() => setTurn(t => t + 1)} />}
+        <div className="view" hidden={view !== 'chat'}><ChatView onTurn={() => setTurn(t => t + 1)} /></div>
         {view !== 'chat' && (
           <div className="thread"><div className="thread-inner">
             <div className="card"><div className="t">{view[0].toUpperCase() + view.slice(1)}</div>

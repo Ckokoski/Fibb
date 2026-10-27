@@ -8,7 +8,18 @@ const STORE = 'fibb_chat_webchat';
 const GREETING = "Hi, I'm Fibb. I'm your writing partner: I keep your book straight, draft when you want me to, and work on it while you sleep. What's your name, and what are you working on?";
 
 function load(): ChatMessage[] {
-  try { const raw = localStorage.getItem(STORE); if (raw) return JSON.parse(raw); } catch { /* ignore */ }
+  try {
+    const raw = localStorage.getItem(STORE);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const restored = (parsed as ChatMessage[])
+          .map(m => ({ ...m, streaming: false }))
+          .filter(m => !(m.role === 'assistant' && !m.content));
+        if (restored.length) return restored;
+      }
+    }
+  } catch { /* ignore */ }
   return [{ id: 'greet', role: 'assistant', content: GREETING }];
 }
 
@@ -27,16 +38,21 @@ export function ChatView({ onTurn }: { onTurn: () => void }) {
     setMsgs(m => [...m, { id: uid, role: 'user', content: text }, { id: aid, role: 'assistant', content: '', streaming: true }]);
     setBusy(true);
     let acc = '';
-    for await (const ev of streamChat(text)) {
-      if (ev.type === 'chunk') { acc += ev.content; setMsgs(m => m.map(x => x.id === aid ? { ...x, content: acc } : x)); }
-      else if (ev.type === 'done') { acc = ev.content || acc; setMsgs(m => m.map(x => x.id === aid ? { ...x, content: acc, streaming: false } : x)); }
-      else if (ev.type === 'error') {
-        if (/no ai provider/i.test(ev.message)) setNeedsProvider(true);
-        setMsgs(m => m.map(x => x.id === aid ? { ...x, content: ev.message, streaming: false } : x));
+    try {
+      for await (const ev of streamChat(text)) {
+        if (ev.type === 'chunk') { acc += ev.content; setMsgs(m => m.map(x => x.id === aid ? { ...x, content: acc } : x)); }
+        else if (ev.type === 'done') { acc = ev.content || acc; setMsgs(m => m.map(x => x.id === aid ? { ...x, content: acc, streaming: false } : x)); }
+        else if (ev.type === 'error') {
+          if (/no ai provider/i.test(ev.message)) setNeedsProvider(true);
+          setMsgs(m => m.map(x => x.id === aid ? { ...x, content: ev.message, streaming: false } : x));
+        }
       }
+    } catch {
+      setMsgs(m => m.map(x => x.id === aid ? { ...x, content: x.content || 'Fibb couldn't reach the server. Is it running?', streaming: false } : x));
+    } finally {
+      setBusy(false);
+      onTurn();
     }
-    setBusy(false);
-    onTurn();
   };
 
   const chips = msgs.length <= 1
