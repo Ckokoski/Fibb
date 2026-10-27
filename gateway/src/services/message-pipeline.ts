@@ -82,13 +82,19 @@ export class MessagePipeline {
     }
   }
 
-  private getHistory(channel: string): Array<{ role: string; content: string; timestamp: Date }> {
+  private async getHistory(channel: string): Promise<Array<{ role: string; content: string; timestamp: Date }>> {
     let history = this.conversationHistories.get(channel);
     if (!history) {
-      history = [];
+      history = await this.deps.chatHistory.load(channel);
       this.conversationHistories.set(channel, history);
     }
     return history;
+  }
+
+  private persistHistory(channel: string): void {
+    const history = this.conversationHistories.get(channel);
+    if (!history) return;
+    this.deps.chatHistory.save(channel, history).catch(err => logger.debug('history save failed', err));
   }
 
   /**
@@ -101,7 +107,8 @@ export class MessagePipeline {
     respond: (text: string) => void,
     extraContext?: string,
     overrideTaskType?: string,
-    preferredProvider?: string
+    preferredProvider?: string,
+    onChunk?: (chunk: string) => void,
   ): Promise<void> {
     // Optional caution appended to the system prompt when an injection pattern
     // was downgraded from block → warn (set inside the injection check below).
@@ -225,7 +232,7 @@ export class MessagePipeline {
     const skipHistory = isProjectChannel || channel === 'conductor' || channel === 'api-silent';
     // Per-channel conversation history prevents cross-contamination between
     // Telegram users, web chat, and API callers.
-    const history = this.getHistory(channel);
+    const history = await this.getHistory(channel);
     if (!skipHistory) {
       history.push({
         role: 'user',
@@ -259,13 +266,16 @@ export class MessagePipeline {
     const thinking = getRecommendedThinking(taskType);
     const taskMaxTokens = getOutputBudget(taskType);
     try {
-      const response = await this.deps.aiRouter.complete({
+      const req = {
         provider: provider.id,
         system: systemPrompt,
         messages,
         maxTokens: taskMaxTokens,
         ...(thinking ? { thinking } : {}),
-      });
+      };
+      const response = (onChunk && !isProjectChannel)
+        ? await this.deps.aiRouter.completeStream(req, onChunk)
+        : await this.deps.aiRouter.complete(req);
 
       if (!skipHistory) {
         history.push({
@@ -273,9 +283,20 @@ export class MessagePipeline {
           content: response.text,
           timestamp: new Date(),
         });
+        this.persistHistory(channel);
       }
 
       await this.deps.memory.process(content, response.text);
+
+      if (!skipHistory && !channel.startsWith('project')) {
+        const extractProvider = provider.id;
+        this.deps.facts.extractFromTurn(content, response.text, async (system, user) => {
+          const r = await this.deps.aiRouter.complete({
+            provider: extractProvider, system, messages: [{ role: 'user', content: user }], maxTokens: 400, temperature: 0,
+          });
+          return r.text;
+        }).catch(err => logger.debug('facts extraction failed', err));
+      }
 
       // ── User model: observe this turn ──
       // Cheap (just appends to a ring buffer). Periodic consolidation runs
@@ -348,7 +369,9 @@ export class MessagePipeline {
               content: response.text,
               timestamp: new Date(),
             });
+            this.persistHistory(channel);
           }
+          if (onChunk) onChunk(response.text);
           respond(response.text);
         } catch (fallbackErr) {
           const fbText = (fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)).substring(0, 250);
@@ -489,6 +512,7 @@ export class MessagePipeline {
 
     prompt += '# Your Identity\n\n';
     prompt += context.soul + '\n\n';
+    prompt += this.deps.facts.render(1500) + '\n\n';
 
     // Channel-specific communication style
     if (context.channel?.startsWith('telegram:')) {

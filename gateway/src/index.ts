@@ -54,6 +54,8 @@ import { PlotPromisesService } from './services/plot-promises.js';
 import { CharacterVoicesService } from './services/character-voices.js';
 import { LessonStore } from './services/lessons.js';
 import { PreferenceStore } from './services/preferences.js';
+import { ChatHistoryStore } from './services/chat-history.js';
+import { FactsStore } from './services/facts.js';
 import { KDPExporter } from './services/kdp-exporter.js';
 import { BetaReaderService } from './services/beta-reader.js';
 import { DialogueAuditor } from './services/dialogue-auditor.js';
@@ -178,6 +180,10 @@ class FibbGateway {
   private set lessons(v: LessonStore) { this.services.lessons = v; }
   private get preferences(): PreferenceStore { return this.services.preferences; }
   private set preferences(v: PreferenceStore) { this.services.preferences = v; }
+  private get chatHistory(): ChatHistoryStore { return this.services.chatHistory; }
+  private set chatHistory(v: ChatHistoryStore) { this.services.chatHistory = v; }
+  private get facts(): FactsStore { return this.services.facts; }
+  private set facts(v: FactsStore) { this.services.facts = v; }
   private get kdpExporter(): KDPExporter { return this.services.kdpExporter; }
   private set kdpExporter(v: KDPExporter) { this.services.kdpExporter = v; }
   private get betaReader(): BetaReaderService { return this.services.betaReader; }
@@ -457,6 +463,10 @@ class FibbGateway {
     await this.preferences.initialize();
     const prefCount = Object.keys(this.preferences.getAll()).length;
     logger.info(`  ✓ Preferences: ${prefCount} tracked`);
+
+    this.chatHistory = new ChatHistoryStore(join(ROOT_DIR, 'workspace', 'memory'));
+    this.facts = new FactsStore(join(ROOT_DIR, 'workspace', 'memory'));
+    await this.facts.initialize();
 
     // ── Phase 6g2: User Model (Honcho-style dialectic, simplified) ──
     // Tracks behavioral observations + per-persona breakdown + periodically
@@ -1021,9 +1031,12 @@ class FibbGateway {
 
       socket.on('message', async (data: { content: string }) => {
         try {
-          await this.handleMessage(data.content, 'webchat', (response) => {
-            socket.emit('response', { content: response });
-          });
+          await this.handleMessage(
+            data.content, 'webchat',
+            (response) => { socket.emit('response', { content: response }); },
+            undefined, undefined, undefined,
+            (chunk) => { socket.emit('chunk', { content: chunk }); },
+          );
         } catch (error) {
           socket.emit('error', { message: 'An error occurred processing your message' });
           this.audit.log('error', 'message_processing_failed', { error: String(error) });
@@ -1046,7 +1059,8 @@ class FibbGateway {
     respond: (text: string) => void,
     extraContext?: string,
     overrideTaskType?: string,
-    preferredProvider?: string
+    preferredProvider?: string,
+    onChunk?: (chunk: string) => void,
   ): Promise<void> {
     // Thin delegate — the full chat pipeline (injection scan, rate limit,
     // preference auto-detect, context build, task classification, system-prompt
@@ -1061,6 +1075,7 @@ class FibbGateway {
       extraContext,
       overrideTaskType,
       preferredProvider,
+      onChunk,
     );
   }
 

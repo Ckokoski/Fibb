@@ -126,6 +126,8 @@ function makeDeps(opts: {
       detectFromMessage: async () => [],
       buildContext: () => opts.preferences ?? '',
     },
+    chatHistory: { load: async () => [], save: async () => {} },
+    facts: { render: () => '', extractFromTurn: async () => {} },
     soul: { getFullContext: () => 'SOUL_IDENTITY_TEXT' },
     memory: {
       getRelevant: async () => 'BOOK_BIBLE_MEMORY',

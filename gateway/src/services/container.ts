@@ -50,6 +50,8 @@ import { PlotPromisesService } from './plot-promises.js';
 import { CharacterVoicesService } from './character-voices.js';
 import { LessonStore } from './lessons.js';
 import { PreferenceStore } from './preferences.js';
+import { ChatHistoryStore } from './chat-history.js';
+import { FactsStore } from './facts.js';
 import { KDPExporter } from './kdp-exporter.js';
 import { BetaReaderService } from './beta-reader.js';
 import { DialogueAuditor } from './dialogue-auditor.js';
@@ -102,6 +104,8 @@ export interface GatewayServices {
   characterVoices: CharacterVoicesService;
   lessons: LessonStore;
   preferences: PreferenceStore;
+  chatHistory: ChatHistoryStore;
+  facts: FactsStore;
   kdpExporter: KDPExporter;
   betaReader: BetaReaderService;
   dialogueAuditor: DialogueAuditor;
@@ -167,6 +171,8 @@ export class ServiceContainer {
   characterVoices!: CharacterVoicesService;
   lessons!: LessonStore;
   preferences!: PreferenceStore;
+  chatHistory!: ChatHistoryStore;
+  facts!: FactsStore;
   kdpExporter!: KDPExporter;
   betaReader!: BetaReaderService;
   dialogueAuditor!: DialogueAuditor;
@@ -220,6 +226,8 @@ export class ServiceContainer {
       characterVoices: this.characterVoices,
       lessons: this.lessons,
       preferences: this.preferences,
+      chatHistory: this.chatHistory,
+      facts: this.facts,
       kdpExporter: this.kdpExporter,
       betaReader: this.betaReader,
       dialogueAuditor: this.dialogueAuditor,
