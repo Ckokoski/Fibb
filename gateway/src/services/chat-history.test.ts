@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, existsSync } from 'fs';
+import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync, readdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ChatHistoryStore } from './chat-history.js';
@@ -33,5 +33,19 @@ describe('ChatHistoryStore', () => {
     const msgs = [1, 2, 3, 4, 5].map(i => ({ role: 'user', content: String(i), timestamp: new Date() }));
     await store.save('webchat', msgs);
     expect((await store.load('webchat')).map(m => m.content)).toEqual(['3', '4', '5']);
+  });
+
+  it('writes atomically: no .tmp file is left behind after save', async () => {
+    const store = new ChatHistoryStore(dir);
+    await store.save('webchat', [{ role: 'user', content: 'x', timestamp: new Date() }]);
+    expect(readdirSync(join(dir, 'history')).some(f => f.endsWith('.tmp'))).toBe(false);
+  });
+
+  it('quarantines a corrupt history file and returns empty', async () => {
+    mkdirSync(join(dir, 'history'), { recursive: true });
+    writeFileSync(join(dir, 'history', 'webchat.json'), '{{{ not json');
+    const store = new ChatHistoryStore(dir);
+    expect(await store.load('webchat')).toEqual([]);
+    expect(readdirSync(join(dir, 'history')).some(f => /^webchat\.json\.corrupt-/.test(f))).toBe(true);
   });
 });

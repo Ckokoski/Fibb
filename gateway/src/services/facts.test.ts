@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync, writeFileSync, readdirSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { FactsStore } from './facts.js';
@@ -41,6 +41,59 @@ describe('FactsStore.merge', () => {
     await again.initialize();
     expect(again.get().name).toBe('Chris');
   });
+
+  it('writes atomically: no .tmp file is left behind', async () => {
+    await store.merge({ name: 'Chris' });
+    expect(existsSync(join(dir, 'facts.json.tmp'))).toBe(false);
+    expect(existsSync(join(dir, 'facts.json'))).toBe(true);
+  });
+
+  it('tolerates malformed input without throwing', async () => {
+    await expect(store.merge({
+      books: 'nope',
+      people: [{ name: 42 }, { name: 'Dev', kind: 'character' }],
+      preferences: ['x', 7],
+      recent: { a: 1 },
+    } as any)).resolves.toBeUndefined();
+    const f = store.get();
+    expect(f.people.map(p => p.name)).toEqual(['Dev']);
+    expect(f.preferences).toEqual(['x']);
+    expect(f.recent).toEqual([]);
+    expect(f.books).toEqual([]);
+  });
+
+  it('drops a non-finite chapter instead of storing NaN', async () => {
+    await store.merge({ books: [{ title: 'Dagger Song', chapter: 'soon' as any }] });
+    expect(store.get().books[0]).not.toHaveProperty('chapter');
+  });
+
+  it('dedupes recent entries by text, ignoring the date prefix', async () => {
+    await store.merge({ recent: ['stuck on ferry scene'] });
+    await store.merge({ recent: ['stuck on ferry scene'] });
+    expect(store.get().recent).toHaveLength(1);
+  });
+});
+
+describe('FactsStore.initialize corruption handling', () => {
+  it('quarantines an unreadable facts.json and starts empty', async () => {
+    writeFileSync(join(dir, 'facts.json'), '<<garbage>>');
+    const fresh = new FactsStore(dir);
+    await fresh.initialize();
+    expect(fresh.get().books).toEqual([]);
+    expect(readdirSync(dir).some(f => /^facts\.json\.corrupt-/.test(f))).toBe(true);
+  });
+
+  it('normalizes loaded data whose array fields are the wrong shape', async () => {
+    writeFileSync(join(dir, 'facts.json'), JSON.stringify({ name: 'Chris', books: 'bad', people: [{ kind: 'x' }], preferences: [1, 'ok'], recent: null }));
+    const fresh = new FactsStore(dir);
+    await fresh.initialize();
+    const f = fresh.get();
+    expect(f.name).toBe('Chris');
+    expect(f.books).toEqual([]);
+    expect(f.people).toEqual([]);
+    expect(f.preferences).toEqual(['ok']);
+    expect(f.recent).toEqual([]);
+  });
 });
 
 describe('FactsStore.render', () => {
@@ -73,6 +126,12 @@ describe('FactsStore.forget', () => {
     expect(await store.forget('Dev')).toBe(1);
     expect(store.get().people).toEqual([]);
   });
+
+  it('ignores phrases shorter than 3 characters', async () => {
+    await store.merge({ preferences: ['hates adverbs'] });
+    expect(await store.forget('a')).toBe(0);
+    expect(store.get().preferences).toEqual(['hates adverbs']);
+  });
 });
 
 describe('FactsStore.extractFromTurn', () => {
@@ -86,5 +145,12 @@ describe('FactsStore.extractFromTurn', () => {
   it('ignores garbage output', async () => {
     await store.extractFromTurn('hi', 'hello', async () => 'no json here');
     expect(store.get().name).toBeUndefined();
+  });
+
+  it('rejects an array result without throwing or changing facts', async () => {
+    await store.merge({ name: 'Chris' });
+    const before = store.get();
+    await expect(store.extractFromTurn('hi', 'yo', async () => '[1,2]')).resolves.toBeUndefined();
+    expect(store.get()).toEqual(before);
   });
 });

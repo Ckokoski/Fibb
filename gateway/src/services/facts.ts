@@ -4,7 +4,7 @@
  * injected at the top of every system prompt. Distinct from user-model
  * (behavioral stats) and preferences (regex-detected style rules).
  */
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, readFile, writeFile, rename, copyFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { logger } from './logger.js';
@@ -31,6 +31,34 @@ export const EXTRACT_SYSTEM_PROMPT =
 
 const empty = (): Facts => ({ books: [], people: [], preferences: [], recent: [] });
 const norm = (s: string) => s.trim().toLowerCase();
+const arr = (v: unknown): any[] => (Array.isArray(v) ? v : []);
+const isObj = (v: unknown): v is Record<string, any> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const DATE_PREFIX = /^\d{4}-\d{2}-\d{2}: /;
+
+/** Validate one book entry from untrusted input. Returns null when unusable. */
+function cleanBook(b: unknown): FactBook | null {
+  if (!isObj(b) || typeof b.title !== 'string' || !b.title.trim()) return null;
+  const out: FactBook = { title: b.title.trim() };
+  if (typeof b.stage === 'string' && b.stage.trim()) out.stage = b.stage.trim();
+  if (typeof b.goal === 'string' && b.goal.trim()) out.goal = b.goal.trim();
+  if (b.chapter !== undefined && b.chapter !== null && b.chapter !== '') {
+    const ch = Number(b.chapter);
+    if (Number.isFinite(ch)) out.chapter = ch;
+  }
+  return out;
+}
+
+/** Validate one person entry from untrusted input. Returns null when unusable. */
+function cleanPerson(p: unknown): FactPerson | null {
+  if (!isObj(p) || typeof p.name !== 'string' || !p.name.trim()) return null;
+  const out: FactPerson = {
+    name: p.name.trim(),
+    kind: typeof p.kind === 'string' && p.kind.trim() ? p.kind.trim() : 'person',
+  };
+  if (typeof p.book === 'string' && p.book.trim()) out.book = p.book.trim();
+  if (typeof p.notes === 'string' && p.notes.trim()) out.notes = p.notes.trim();
+  return out;
+}
 
 export class FactsStore {
   private file: string;
@@ -42,13 +70,25 @@ export class FactsStore {
 
   async initialize(): Promise<void> {
     if (!existsSync(this.file)) return;
+    let raw: unknown;
     try {
-      const raw = JSON.parse(await readFile(this.file, 'utf-8'));
-      this.facts = { ...empty(), ...raw };
+      raw = JSON.parse(await readFile(this.file, 'utf-8'));
     } catch (err) {
       logger.warn('facts.json unreadable, starting empty', err);
+      await quarantine(this.file);
       this.facts = empty();
+      return;
     }
+    const r: Record<string, any> = isObj(raw) ? raw : {};
+    const f: Facts = {
+      books: arr(r.books).map(cleanBook).filter((x): x is FactBook => x !== null),
+      people: arr(r.people).map(cleanPerson).filter((x): x is FactPerson => x !== null),
+      preferences: arr(r.preferences).filter((s): s is string => typeof s === 'string'),
+      recent: arr(r.recent).filter((s): s is string => typeof s === 'string'),
+    };
+    if (typeof r.name === 'string' && r.name.trim()) f.name = r.name.trim();
+    if (typeof r.updatedAt === 'string') f.updatedAt = r.updatedAt;
+    this.facts = f;
   }
 
   get(): Facts {
@@ -57,32 +97,38 @@ export class FactsStore {
 
   async merge(p: PartialFacts): Promise<void> {
     const f = this.facts;
-    if (typeof p.name === 'string' && p.name.trim()) f.name = p.name.trim();
+    if (typeof p?.name === 'string' && p.name.trim()) f.name = p.name.trim();
 
-    for (const b of p.books || []) {
-      if (!b?.title) continue;
+    for (const raw of arr(p?.books)) {
+      const b = cleanBook(raw);
+      if (!b) continue;
       const hit = f.books.find(x => norm(x.title) === norm(b.title));
       if (hit) Object.assign(hit, stripUndefined({ stage: b.stage, chapter: b.chapter, goal: b.goal }));
-      else f.books.push({ title: b.title.trim(), ...stripUndefined({ stage: b.stage, chapter: b.chapter, goal: b.goal }) });
+      else f.books.push({ title: b.title, ...stripUndefined({ stage: b.stage, chapter: b.chapter, goal: b.goal }) });
     }
 
-    for (const person of p.people || []) {
-      if (!person?.name) continue;
+    for (const raw of arr(p?.people)) {
+      const person = cleanPerson(raw);
+      if (!person) continue;
       const hit = f.people.find(x => norm(x.name) === norm(person.name));
       if (hit) Object.assign(hit, stripUndefined({ kind: person.kind, book: person.book, notes: person.notes }));
-      else f.people.push({ name: person.name.trim(), kind: person.kind || 'person', ...stripUndefined({ book: person.book, notes: person.notes }) });
+      else f.people.push({ name: person.name, kind: person.kind, ...stripUndefined({ book: person.book, notes: person.notes }) });
     }
 
-    for (const pref of p.preferences || []) {
-      const s = String(pref).trim();
+    for (const pref of arr(p?.preferences)) {
+      if (typeof pref !== 'string') continue;
+      const s = pref.trim();
       if (s && !f.preferences.some(x => norm(x) === norm(s))) f.preferences.push(s);
     }
     f.preferences = f.preferences.slice(-20);
 
     const today = new Date().toISOString().slice(0, 10);
-    for (const r of p.recent || []) {
-      const s = String(r).trim();
-      if (s) f.recent.push(`${today}: ${s}`);
+    for (const r of arr(p?.recent)) {
+      if (typeof r !== 'string') continue;
+      const s = r.trim();
+      if (!s) continue;
+      if (f.recent.some(x => norm(x.replace(DATE_PREFIX, '')) === norm(s))) continue;
+      f.recent.push(`${today}: ${s}`);
     }
     f.recent = f.recent.slice(-10);
 
@@ -93,7 +139,7 @@ export class FactsStore {
   /** Remove every fact whose text contains the phrase. Returns the count removed. */
   async forget(phrase: string): Promise<number> {
     const q = norm(phrase);
-    if (!q) return 0;
+    if (q.length < 3) return 0;
     const f = this.facts;
     let n = 0;
     const keep = <T>(arr: T[], text: (t: T) => string): T[] =>
@@ -145,13 +191,29 @@ export class FactsStore {
     let text: string;
     try { text = await complete(EXTRACT_SYSTEM_PROMPT, user); } catch (err) { logger.debug('facts extract failed', err); return; }
     const parsed = parseJsonLoose(text);
-    if (!parsed || typeof parsed !== 'object') return;
-    await this.merge(parsed as PartialFacts);
+    if (!isObj(parsed)) return;
+    try {
+      await this.merge(parsed as PartialFacts);
+    } catch (err) {
+      logger.debug('facts merge failed', err);
+    }
   }
 
   private async persist(): Promise<void> {
     await mkdir(join(this.file, '..'), { recursive: true });
-    await writeFile(this.file, JSON.stringify(this.facts, null, 2));
+    const tmp = `${this.file}.tmp`;
+    await writeFile(tmp, JSON.stringify(this.facts, null, 2));
+    await rename(tmp, this.file);
+  }
+}
+
+/** Copy an unreadable file aside so it is never silently overwritten. */
+async function quarantine(file: string): Promise<void> {
+  const dest = `${file}.corrupt-${Date.now()}`;
+  try {
+    await copyFile(file, dest);
+  } catch (err) {
+    logger.warn(`could not quarantine ${file}`, err);
   }
 }
 
