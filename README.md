@@ -17,6 +17,11 @@ AuthorAgent takes an idea (or your existing manuscript) through **research → o
 2. **One free tool, not five subscriptions.** Writing assistant + developmental editor + formatter + market research + launch planner, in one open-source agent. Pay only your own API usage — and the router spends it wisely (free models for structure, premium only where prose quality pays).
 3. **Built to fight AI slop, not produce more of it.** A quality engine no other tool has: evidence-chained contradiction detection, per-character voice critics, anti-slop screening, a judge→reflect→revise evolution loop — and it *learns from its own findings*, injecting durable lessons into future writing.
 
+> **Looking for the previous version (AuthorAgent 4.0, the full "Conductor's Studio" pipeline dashboard)?**
+> It is preserved as the [`v4.0.0-authoragent` release](https://github.com/Ckokoski/authoragent/releases/tag/v4.0.0-authoragent)
+> (zip download) and the [`archive/wave3-marketing`](https://github.com/Ckokoski/authoragent/tree/archive/wave3-marketing) branch.
+> `main` is being rebuilt as **Fibb**, a chat-first writing companion; see `docs/superpowers/specs/`.
+
 ---
 
 ## The Conductor's Studio
