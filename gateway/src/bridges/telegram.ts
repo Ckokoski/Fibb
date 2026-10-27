@@ -645,6 +645,7 @@ ${text}`;
       let flushPromise: Promise<void> = Promise.resolve();
       const flush = async () => {
         if (done || !buffer.trim()) return;
+        lastEdit = Date.now();
         const shown = buffer.length > 4000 ? buffer.slice(0, 4000) + '…' : buffer;
         if (draftId === undefined) draftId = await this.sendPlain(chatId, shown);
         else await this.editPlain(chatId, draftId, shown);
@@ -654,7 +655,7 @@ ${text}`;
         if (done) return;
         buffer += chunk;
         if (Date.now() - lastEdit > 1000 && !editTimer) {
-          editTimer = setTimeout(() => { editTimer = null; flushPromise = flush().catch(() => {}); }, 50);
+          editTimer = setTimeout(() => { editTimer = null; flushPromise = flushPromise.then(() => flush()).catch(() => {}); }, 50);
         }
       };
 
