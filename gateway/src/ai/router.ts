@@ -10,6 +10,7 @@ import { CostTracker } from '../services/costs.js';
 import { logger } from '../services/logger.js';
 import { getLLMPrice } from '../services/pricing.js';
 import { ModelConfig } from './model-config.js';
+import { readNdjson, readSse } from './stream-readers.js';
 
 const log = logger.child('[router]');
 
@@ -578,6 +579,176 @@ export class AIRouter {
       default:
         throw new Error(`Unknown provider: ${provider.id}`);
     }
+  }
+
+  /**
+   * Streaming completion. Calls onChunk with each text delta as it arrives and
+   * resolves with the same CompletionResponse shape as complete(). Providers
+   * without a streaming path here (Claude) fall back to complete() and emit
+   * the whole text as one chunk, so callers can always use this method.
+   */
+  async completeStream(
+    request: CompletionRequest,
+    onChunk: (text: string) => void,
+  ): Promise<CompletionResponse> {
+    const provider = this.providers.get(request.provider);
+    if (!provider) throw new Error(`Provider ${request.provider} not found`);
+
+    const streams = ['ollama', 'gemini', 'deepseek', 'openai', 'openrouter'].includes(provider.id);
+    if (!streams) {
+      // complete() does its own cache tracking; don't double count.
+      const res = await this.complete(request);
+      onChunk(res.text);
+      return res;
+    }
+
+    // ── Prompt cache tracking (mirrors complete()) ──
+    const promptHash = this.hashPrompt(request.system);
+    const cacheKey = `${provider.id}:system`;
+    const cached = this.promptCache.get(cacheKey);
+    if (cached && cached.hash === promptHash) {
+      this.cacheHits++;
+      this.savedTokens += Math.ceil(request.system.length / 4);
+    } else {
+      this.cacheMisses++;
+      this.promptCache.set(cacheKey, { hash: promptHash, timestamp: Date.now() });
+    }
+
+    switch (provider.id) {
+      case 'ollama':     return this.streamOllama(provider, request, onChunk);
+      case 'gemini':     return this.streamGemini(provider, request, onChunk);
+      case 'deepseek':   return this.streamOpenAICompatible(provider, request, 'deepseek_api_key', onChunk);
+      case 'openai':     return this.streamOpenAICompatible(provider, request, 'openai_api_key', onChunk);
+      default:           return this.streamOpenAICompatible(provider, request, 'openrouter_api_key', onChunk);
+    }
+  }
+
+  private async streamOllama(
+    provider: AIProvider, request: CompletionRequest, onChunk: (t: string) => void,
+  ): Promise<CompletionResponse> {
+    let response: Response;
+    try {
+      response = await fetch(`${provider.endpoint}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: provider.model,
+          messages: [{ role: 'system', content: request.system }, ...request.messages],
+          stream: true,
+          options: {
+            temperature: request.temperature ?? 0.7,
+            num_predict: request.maxTokens ?? provider.maxTokens,
+          },
+        }),
+      });
+    } catch (err: any) {
+      throw new Error(`Ollama unreachable at ${provider.endpoint}: ${err?.message || err}. Is "ollama serve" running?`);
+    }
+    if (!response.ok || !response.body) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`Ollama error ${response.status}: ${body.substring(0, 300) || response.statusText}`);
+    }
+    let text = '';
+    let tokens = 0;
+    await readNdjson(response.body, (obj) => {
+      if (obj?.error) throw new Error(`Ollama error: ${obj.error}`);
+      const delta: string = obj?.message?.content || '';
+      if (delta) { text += delta; onChunk(delta); }
+      if (obj?.done) tokens = (obj.prompt_eval_count || 0) + (obj.eval_count || 0);
+    });
+    if (!text.trim()) throw new Error(`Ollama returned an empty response for model "${provider.model}".`);
+    return { text, tokensUsed: tokens, estimatedCost: 0, provider: 'ollama' };
+  }
+
+  private async streamGemini(
+    provider: AIProvider, request: CompletionRequest, onChunk: (t: string) => void,
+  ): Promise<CompletionResponse> {
+    const apiKey = await this.vault.get('gemini_api_key');
+    const generationConfig: any = {
+      temperature: request.temperature ?? 0.7,
+      maxOutputTokens: request.maxTokens ?? provider.maxTokens,
+    };
+    const response = await fetch(
+      `${provider.endpoint}/models/${provider.model}:streamGenerateContent?alt=sse&key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: request.system }] },
+          contents: request.messages.map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }],
+          })),
+          generationConfig,
+        }),
+      },
+    );
+    if (!response.ok || !response.body) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`Gemini error ${response.status}: ${body.substring(0, 300) || response.statusText}`);
+    }
+    let text = '';
+    let tokens = 0;
+    await readSse(response.body, (obj) => {
+      const parts = obj?.candidates?.[0]?.content?.parts || [];
+      for (const p of parts) {
+        if (typeof p?.text === 'string' && p.text) { text += p.text; onChunk(p.text); }
+      }
+      if (obj?.usageMetadata?.totalTokenCount) tokens = obj.usageMetadata.totalTokenCount;
+    });
+    if (!text.trim()) throw new Error('Gemini returned an empty response.');
+    // Same as completeGemini: free tier, no cost.
+    return { text, tokensUsed: tokens, estimatedCost: 0, provider: 'gemini' };
+  }
+
+  private async streamOpenAICompatible(
+    provider: AIProvider, request: CompletionRequest, keyName: string, onChunk: (t: string) => void,
+  ): Promise<CompletionResponse> {
+    const apiKey = await this.vault.get(keyName);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    };
+    if (provider.id === 'openrouter') {
+      headers['HTTP-Referer'] = 'https://github.com/Ckokoski/authoragent';
+      headers['X-Title'] = 'Fibb';
+    }
+    const response = await fetch(`${provider.endpoint}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: provider.model,
+        messages: [{ role: 'system', content: request.system }, ...request.messages],
+        max_tokens: request.maxTokens ?? provider.maxTokens,
+        temperature: request.temperature ?? 0.7,
+        stream: true,
+        stream_options: { include_usage: true },
+      }),
+    });
+    if (!response.ok || !response.body) {
+      const body = await response.text().catch(() => '');
+      throw new Error(`${provider.name} HTTP ${response.status}: ${body.substring(0, 300) || response.statusText}`);
+    }
+    let text = '';
+    let inputTokens = 0;
+    let outputTokens = 0;
+    await readSse(response.body, (obj) => {
+      if (obj?.error) throw new Error(`${provider.name} API error: ${obj.error.message || 'Unknown error'}`);
+      const delta: string = obj?.choices?.[0]?.delta?.content || '';
+      if (delta) { text += delta; onChunk(delta); }
+      if (obj?.usage) {
+        inputTokens = obj.usage.prompt_tokens || 0;
+        outputTokens = obj.usage.completion_tokens || 0;
+      }
+    });
+    if (!text.trim()) throw new Error(`${provider.name} returned an empty response.`);
+    return {
+      text,
+      tokensUsed: inputTokens + outputTokens,
+      estimatedCost: (inputTokens / 1000) * provider.costPer1kInput +
+                     (outputTokens / 1000) * provider.costPer1kOutput,
+      provider: provider.id,
+    };
   }
 
   /**
