@@ -1,5 +1,5 @@
 /**
- * Tiny, dependency-free leveled logger for AuthorAgent.
+ * Tiny, dependency-free leveled logger for Fibb.
  *
  * Why this exists: the codebase used raw console.* everywhere with no way to
  * quiet verbose/diagnostic output in production, and no consistent way to

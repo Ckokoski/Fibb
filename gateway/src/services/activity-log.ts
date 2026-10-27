@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Universal Activity Log
+ * Fibb Universal Activity Log
  * Tracks ALL agent actions: goals, chats, file ops, skill matches, errors
  * Replaces the book-conductor-specific director's log with a unified feed.
  */

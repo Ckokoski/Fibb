@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Gateway - Main Entry Point
+ * Fibb Gateway - Main Entry Point
  * A secure, author-focused fork of OpenClaw
  *
  * Security: MoatBot-grade (encrypted vault, sandboxed, audited)
@@ -84,10 +84,10 @@ const ROOT_DIR = __dirname.includes('dist')
   : join(__dirname, '..', '..');
 
 // ═══════════════════════════════════════════════════════════
-// AuthorAgent Gateway
+// Fibb Gateway
 // ═══════════════════════════════════════════════════════════
 
-class AuthorAgentGateway {
+class FibbGateway {
   private app: express.Application;
   private server: ReturnType<typeof createServer>;
   private io: SocketIO;
@@ -241,7 +241,7 @@ class AuthorAgentGateway {
 
   async initialize(): Promise<void> {
     logger.info('');
-    logger.info('  ✍️  AuthorAgent v3.0.0');
+    logger.info('  ✍️  Fibb v3.0.0');
     logger.info('  ═══════════════════════════════════');
     logger.info('  The Autonomous AI Writing Agent');
     logger.info('  An OpenClaw fork for authors');
@@ -308,7 +308,7 @@ class AuthorAgentGateway {
         logger.warn(`  ⚠ Memory search reindex failed: ${(err as Error)?.message || err}`);
       }
     } else {
-      logger.warn('  ⚠ Memory search unavailable (search will be disabled, rest of AuthorAgent works)');
+      logger.warn('  ⚠ Memory search unavailable (search will be disabled, rest of Fibb works)');
     }
 
     // ── Phase 4: AI Providers ──
@@ -353,15 +353,15 @@ class AuthorAgentGateway {
     // ── Phase 6b: Author OS Tools ──
     // Author OS is a SEPARATE project (Author Workflow Engine, Book Bible Engine,
     // Manuscript Autopsy, AI Author Library, Creator Asset Suite, Format Factory Pro).
-    // If you have it installed alongside AuthorAgent, we auto-discover and integrate.
-    // If you don't, AuthorAgent works fine without it — this is purely additive.
+    // If you have it installed alongside Fibb, we auto-discover and integrate.
+    // If you don't, Fibb works fine without it — this is purely additive.
     const homeDir = process.env.HOME || process.env.USERPROFILE || '~';
     const authorOSCandidates = [
       process.env.AUTHOR_OS_PATH || '',                           // Explicit env var (highest priority)
       '/app/author-os',                                           // Docker mount
       join(homeDir, 'author-os'),                                 // ~/author-os (Linux/macOS)
       join(homeDir, 'Author OS'),                                 // ~/Author OS (with space)
-      join(ROOT_DIR, '..', 'Author OS'),                          // Sibling to AuthorAgent
+      join(ROOT_DIR, '..', 'Author OS'),                          // Sibling to Fibb
       join(ROOT_DIR, '..', '..', 'Author OS'),                    // Automations/Author OS/ (Windows default)
       join(ROOT_DIR, '..', 'author-os'),                          // sibling lowercase
     ].filter(Boolean);
@@ -393,8 +393,8 @@ class AuthorAgentGateway {
         logger.info(`    Expected subfolders: "Author Workflow Engine", "Book Bible Engine", "Manuscript Autopsy", "AI Author Library".`);
       }
     } else {
-      logger.info('  ℹ Author OS: not installed (optional — AuthorAgent works without it).');
-      logger.info('    To enable: place the Author OS folder next to AuthorAgent, or set AUTHOR_OS_PATH in .env');
+      logger.info('  ℹ Author OS: not installed (optional — Fibb works without it).');
+      logger.info('    To enable: place the Author OS folder next to Fibb, or set AUTHOR_OS_PATH in .env');
     }
 
     // ── Phase 6c: TTS Service (Piper) — silent init, optional feature ──
@@ -798,7 +798,7 @@ class AuthorAgentGateway {
               });
 
               const coreLessonsPath = join(agentDir, 'core-lessons.md');
-              const coreLessonsContent = `# AuthorAgent Core Lessons\n\n` +
+              const coreLessonsContent = `# Fibb Core Lessons\n\n` +
                 `*Auto-consolidated from ${log.length} project analyses on ${new Date().toISOString().split('T')[0]}*\n\n` +
                 consolidateResult.text;
               await fs.writeFile(coreLessonsPath, coreLessonsContent, 'utf-8');
@@ -870,7 +870,7 @@ class AuthorAgentGateway {
           const provider = this.aiRouter.selectProvider('general');
           const result = await this.aiRouter.complete({
             provider: provider.id,
-            system: 'You are AuthorAgent, an AI writing agent for authors. Be detailed, actionable, and expert-level.',
+            system: 'You are Fibb, an AI writing agent for authors. Be detailed, actionable, and expert-level.',
             messages: [{ role: 'user' as const, content: task.prompt }],
             maxTokens: 2000,
           });
@@ -975,7 +975,7 @@ class AuthorAgentGateway {
       const htmlFile = join(dashboardPath, 'index.html');
       res.sendFile(htmlFile, (err) => {
         if (err && !res.headersSent) {
-          res.status(500).json({ status: 'error', message: 'AuthorAgent running but dashboard HTML not found.' });
+          res.status(500).json({ status: 'error', message: 'Fibb running but dashboard HTML not found.' });
         }
       });
     });
@@ -992,7 +992,7 @@ class AuthorAgentGateway {
     await this.activityLog.log({
       type: 'system',
       source: 'internal',
-      message: `AuthorAgent started — ${providers.length} AI provider(s), ${this.skills.getLoadedCount()} skills`,
+      message: `Fibb started — ${providers.length} AI provider(s), ${this.skills.getLoadedCount()} skills`,
       metadata: {
         providers: providers.map(p => p.id),
         skillCount: this.skills.getLoadedCount(),
@@ -1001,7 +1001,7 @@ class AuthorAgentGateway {
 
     logger.info('');
     logger.info('  ═══════════════════════════════════');
-    logger.info('  ✍️  AuthorAgent is ready to write');
+    logger.info('  ✍️  Fibb is ready to write');
     logger.info(`  📡 Dashboard: http://localhost:${this.config.get('server.port', 3847)}`);
     logger.info('  ═══════════════════════════════════');
     logger.info('');
@@ -1281,7 +1281,7 @@ class AuthorAgentGateway {
         const paused = projects.filter(p => p.status === 'paused');
         const autoStatus = this.heartbeat.getAutonomousStatus();
         const stats = this.heartbeat.getStats();
-        let status = `**AuthorAgent Status**\n\n`;
+        let status = `**Fibb Status**\n\n`;
         status += `📊 Projects: ${active.length} active, ${paused.length} paused, ${completed.length} completed\n`;
         status += `🤖 Agent: ${autoStatus.enabled ? (autoStatus.running ? '**WORKING**' : '**ON**') : 'OFF'}\n`;
         status += `📝 Words today: ${stats.todayWords.toLocaleString()}/${stats.dailyWordGoal.toLocaleString()} (${stats.goalPercent}%)`;
@@ -1989,7 +1989,7 @@ class AuthorAgentGateway {
               // Generate DOCX version
               const docxBuffer = await generateDocxBuffer({
                 title: project.title,
-                author: 'AuthorAgent',
+                author: 'Fibb',
                 content: manuscriptMd,
               });
               await fs.writeFile(join(projectDir, 'manuscript.docx'), docxBuffer);
@@ -2261,23 +2261,23 @@ class AuthorAgentGateway {
   }
 
   async shutdown(): Promise<void> {
-    logger.info('\n  Shutting down AuthorAgent...');
+    logger.info('\n  Shutting down Fibb...');
     this.heartbeat?.stop();
     this.telegram?.disconnect();
     this.discord?.disconnect();
     await this.activityLog?.log({
       type: 'system',
       source: 'internal',
-      message: 'AuthorAgent shutting down',
+      message: 'Fibb shutting down',
     });
     await this.audit?.log('system', 'shutdown', {});
     this.server.close();
-    logger.info('  ✍️  AuthorAgent stopped. Happy writing!\n');
+    logger.info('  ✍️  Fibb stopped. Happy writing!\n');
   }
 }
 
 // ── Start ──
-const gateway = new AuthorAgentGateway();
+const gateway = new FibbGateway();
 
 process.on('SIGINT', async () => {
   await gateway.shutdown();
@@ -2290,8 +2290,8 @@ process.on('SIGTERM', async () => {
 });
 
 gateway.start().catch((error) => {
-  logger.error('Failed to start AuthorAgent:', error);
+  logger.error('Failed to start Fibb:', error);
   process.exit(1);
 });
 
-export { AuthorAgentGateway };
+export { FibbGateway };

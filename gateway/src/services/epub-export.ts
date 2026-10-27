@@ -1,5 +1,5 @@
 /**
- * AuthorAgent EPUB Export Utility
+ * Fibb EPUB Export Utility
  * Generate valid EPUB3 files from markdown content
  * Uses adm-zip (already a dependency) to build the EPUB zip structure
  */
@@ -108,7 +108,7 @@ ${tocItems}
 </html>`, 'utf-8'));
 
   // ── 5. OEBPS/style.css ──
-  zip.addFile('OEBPS/style.css', Buffer.from(`/* AuthorAgent EPUB Stylesheet */
+  zip.addFile('OEBPS/style.css', Buffer.from(`/* Fibb EPUB Stylesheet */
 body {
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 1em;

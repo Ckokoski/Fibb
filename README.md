@@ -1,4 +1,4 @@
-# AuthorAgent
+# Fibb
 
 **The free, open-source AI writing agent that runs the entire book pipeline on your own machine.**
 
@@ -9,7 +9,7 @@
 
 Every author wants an agent. This one works for your book — not for 15%.
 
-AuthorAgent takes an idea (or your existing manuscript) through **research → outline → write → revise → format → publish-ready** in one autonomous pipeline, on your computer, with your own AI keys. What a $2,000/year stack of subscriptions tries to do, one free tool does — **without your manuscript ever leaving your machine**.
+Fibb takes an idea (or your existing manuscript) through **research → outline → write → revise → format → publish-ready** in one autonomous pipeline, on your computer, with your own AI keys. What a $2,000/year stack of subscriptions tries to do, one free tool does — **without your manuscript ever leaving your machine**.
 
 **Three things that make it different:**
 
@@ -17,7 +17,7 @@ AuthorAgent takes an idea (or your existing manuscript) through **research → o
 2. **One free tool, not five subscriptions.** Writing assistant + developmental editor + formatter + market research + launch planner, in one open-source agent. Pay only your own API usage — and the router spends it wisely (free models for structure, premium only where prose quality pays).
 3. **Built to fight AI slop, not produce more of it.** A quality engine no other tool has: evidence-chained contradiction detection, per-character voice critics, anti-slop screening, a judge→reflect→revise evolution loop — and it *learns from its own findings*, injecting durable lessons into future writing.
 
-> **Looking for the previous version (AuthorAgent 4.0, the full "Conductor's Studio" pipeline dashboard)?**
+> **Looking for the previous version (Fibb 4.0, the full "Conductor's Studio" pipeline dashboard)?**
 > It is preserved as the [`v4.0.0-authoragent` release](https://github.com/Ckokoski/Fibb/releases/tag/v4.0.0-authoragent)
 > (zip download) and the [`archive/wave3-marketing`](https://github.com/Ckokoski/Fibb/tree/archive/wave3-marketing) branch.
 > `main` is being rebuilt as **Fibb**, a chat-first writing companion; see `docs/superpowers/specs/`.
@@ -49,7 +49,7 @@ This is the part built to make books *better*, not just faster:
 
 ## Long-Book Memory
 
-The unsolved problem of AI writing is book-length consistency. AuthorAgent ships a tiered memory system:
+The unsolved problem of AI writing is book-length consistency. Fibb ships a tiered memory system:
 
 - **CORE** — a budgeted, always-in-prompt digest: active chapter state, the characters this scene touches, open plot threads, your style fingerprint
 - **ARCHIVAL** — full-text search over the entire manuscript and past work, pulled in on demand ("what happened in chapter 12?" actually works)
@@ -82,7 +82,7 @@ npm start
 # Click ✨ Start a Book
 ```
 
-> **First run:** AuthorAgent generates a vault encryption key and stores it **outside the repo** (`%LOCALAPPDATA%\AuthorClaw\vault.key` on Windows, `~/.authorclaw/vault.key` elsewhere) so your encrypted API keys never sync to cloud drives. The Getting Started checklist on the home screen walks you through the rest.
+> **First run:** Fibb generates a vault encryption key and stores it **outside the repo** (`%LOCALAPPDATA%\AuthorClaw\vault.key` on Windows, `~/.authorclaw/vault.key` elsewhere) so your encrypted API keys never sync to cloud drives. The Getting Started checklist on the home screen walks you through the rest.
 
 See [QUICKSTART.md](QUICKSTART.md) for the full guide.
 

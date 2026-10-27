@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Audit Log
+ * Fibb Audit Log
  * Tamper-resistant logging of all agent actions
  */
 

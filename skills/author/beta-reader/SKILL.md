@@ -1,7 +1,7 @@
 ---
 name: beta-reader
 description: Simulate beta reader feedback from different reader perspectives
-author: AuthorAgent
+author: Fibb
 version: 1.0.0
 triggers:
   - "beta read"

@@ -1,6 +1,6 @@
 /**
- * AuthorAgent Author OS Integration Service
- * Bridges AuthorAgent with the Author OS tool suite:
+ * Fibb Author OS Integration Service
+ * Bridges Fibb with the Author OS tool suite:
  *   - Author Workflow Engine (JSON writing templates)
  *   - Book Bible Engine (story planning & world-building)
  *   - Manuscript Autopsy (manuscript analysis)

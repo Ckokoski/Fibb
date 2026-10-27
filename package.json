@@ -1,7 +1,7 @@
 {
-  "name": "authoragent",
-  "version": "4.0.0",
-  "description": "The Autonomous AI Writing Agent — 6 book production phases, author personas, pipeline mode, 21-step deep revision, KDP-ready export. Built for authors who scale.",
+  "name": "fibb",
+  "version": "5.0.0",
+  "description": "Fibb — the AI writing partner for authors. Knows your book, works while you sleep, talks like a friend.",
   "main": "gateway/src/index.ts",
   "type": "module",
   "scripts": {

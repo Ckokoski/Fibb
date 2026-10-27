@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Manuscript Hub
+ * Fibb Manuscript Hub
  *
  * Aggregates live stats across all projects for a single dashboard view:
  * word counts, progress, recent activity, word-goal tracking, in-flight

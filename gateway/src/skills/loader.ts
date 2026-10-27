@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Skill Loader
+ * Fibb Skill Loader
  * Discovers, validates, and loads skills from the skills directory
  */
 

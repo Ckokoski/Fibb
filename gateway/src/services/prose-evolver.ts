@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Prose Evolver — GEPA-style reflective prose evolution.
+ * Fibb Prose Evolver — GEPA-style reflective prose evolution.
  *
  * The apex quality feature: iteratively improve a single prose passage by using
  * the WritingJudge as a TRAINING SIGNAL (fitness function), while preserving the

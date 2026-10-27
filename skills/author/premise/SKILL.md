@@ -1,7 +1,7 @@
 ---
 name: premise
 description: Develop compelling story premises with market awareness and emotional hooks
-author: AuthorAgent
+author: Fibb
 version: 1.0.0
 triggers:
   - "premise"

@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Memory Tier Service
+ * Fibb Memory Tier Service
  *
  * The budgeting / reorganization layer over EXISTING memory (Chunk A foundation
  * of the Tiered Memory + Sleep-Time Consolidation design).

@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Synthetic Reader Panels
+ * Fibb Synthetic Reader Panels
  *
  * A marketing-moat feature: tournament-based evaluation of marketing assets
  * (blurbs, titles, cover concepts, high-level book concepts) against a panel

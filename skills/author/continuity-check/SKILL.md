@@ -1,7 +1,7 @@
 ---
 name: continuity-check
 description: Scan manuscript for inconsistencies in characters, timeline, settings, and names
-author: AuthorAgent
+author: Fibb
 version: 1.0.0
 triggers:
   - "continuity"

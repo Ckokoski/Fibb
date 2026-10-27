@@ -1,7 +1,7 @@
 /**
- * AuthorAgent Memory Search
+ * Fibb Memory Search
  *
- * SQLite + FTS5 full-text search across every conversation turn AuthorAgent
+ * SQLite + FTS5 full-text search across every conversation turn Fibb
  * has ever logged + every project step output. Inspired by Hermes Agent's
  * persistent-memory architecture.
  *
@@ -10,7 +10,7 @@
  *   2. Per-persona isolation — pen-name A's memory doesn't pollute pen-name B's
  *   3. Resilient indexing — incremental, never re-scans everything
  *   4. Graceful degradation — if SQLite fails to load (no native binary
- *      available on this machine), the rest of AuthorAgent keeps working
+ *      available on this machine), the rest of Fibb keeps working
  *      and search just returns "unavailable"
  *
  * Data sources indexed:

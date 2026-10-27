@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Writing Stats Store
+ * Fibb Writing Stats Store
  *
  * Minimal, additive, per-day word tally used to power the "Author HQ"
  * dashboard (today/week/total words, streaks). This does NOT replace

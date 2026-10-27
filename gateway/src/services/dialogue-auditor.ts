@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Dialogue Auditor
+ * Fibb Dialogue Auditor
  *
  * Extracts every dialogue line from a manuscript, attributes each to a
  * speaker (when possible), builds per-character voice fingerprints, and

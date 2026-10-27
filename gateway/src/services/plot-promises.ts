@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Plot Promises
+ * Fibb Plot Promises
  *
  * Sanderson's "promises and payoffs" framework, made concrete:
  *

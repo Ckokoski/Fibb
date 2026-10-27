@@ -1,8 +1,8 @@
 /**
- * AuthorAgent Per-Character Voice Fingerprinting
+ * Fibb Per-Character Voice Fingerprinting
  *
  * "Everyone sounds the same" is the most-flagged dialogue critique authors
- * receive. AuthorAgent already has StyleClone for the author's overall voice
+ * receive. Fibb already has StyleClone for the author's overall voice
  * — this service extends the same 47-marker analyzer to track each NAMED
  * character's dialogue separately.
  *

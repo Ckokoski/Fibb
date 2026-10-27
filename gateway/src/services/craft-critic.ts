@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Craft Critic
+ * Fibb Craft Critic
  *
  * Developmental-editor-level feedback that goes beyond "this could be better."
  * All checks are local heuristics (no AI calls) so they're fast, deterministic,

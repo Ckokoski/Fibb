@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Track Changes
+ * Fibb Track Changes
  *
  * Parses .docx files with Word Review track-changes markup:
  *   <w:ins>       inserted text
@@ -9,7 +9,7 @@
  *
  * Produces a structured diff the dashboard can render, and can also apply
  * user-selected accept/reject decisions to generate a clean Markdown output
- * suitable for re-importing into AuthorAgent.
+ * suitable for re-importing into Fibb.
  *
  * Uses the already-bundled `adm-zip` dependency (no new deps needed).
  */

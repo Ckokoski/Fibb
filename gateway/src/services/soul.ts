@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Soul Service
+ * Fibb Soul Service
  * Loads and manages the three-part soul: personality, style guide, voice profile
  */
 
@@ -13,7 +13,7 @@ export class SoulService {
   private personalityOverride = '';
   private styleGuide = '';
   private voiceProfile = '';
-  private name = 'AuthorAgent';
+  private name = 'Fibb';
 
   constructor(soulDir: string) {
     this.soulDir = soulDir;
@@ -30,7 +30,7 @@ export class SoulService {
     }
 
     // Load optional personality override (e.g., snarky, formal, etc.)
-    // This file is user-created and NOT shipped with AuthorAgent
+    // This file is user-created and NOT shipped with Fibb
     const personalityPath = join(this.soulDir, 'PERSONALITY.md');
     if (existsSync(personalityPath)) {
       this.personalityOverride = await readFile(personalityPath, 'utf-8');
@@ -74,7 +74,7 @@ export class SoulService {
       context += '## Author Voice Profile\n\n' + this.voiceProfile + '\n\n';
     }
 
-    return context || 'You are AuthorAgent, a helpful writing assistant for authors.';
+    return context || 'You are Fibb, a helpful writing assistant for authors.';
   }
 
   async updateVoiceProfile(analysis: string): Promise<void> {

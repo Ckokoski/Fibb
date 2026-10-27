@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Learning Service — the LEARN-FROM-EXPERIENCE loop.
+ * Fibb Learning Service — the LEARN-FROM-EXPERIENCE loop.
  *
  * The quality tools (revision orchestrator, contradiction detector, character
  * persona agents) each produce a fresh report per chapter. Individually those

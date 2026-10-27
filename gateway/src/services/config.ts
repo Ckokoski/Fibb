@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Configuration Service
+ * Fibb Configuration Service
  */
 
 import { readFile, writeFile } from 'fs/promises';
