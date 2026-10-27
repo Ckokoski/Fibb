@@ -49,7 +49,7 @@ npm ci
 ### Vault key
 
 You do not need to create one. On first start Fibb generates a vault key and stores it outside the repo
-(`%LOCALAPPDATA%\AuthorClawault.key` on Windows, `~/.authorclaw/vault.key` elsewhere) so encrypted API keys
+(`%LOCALAPPDATA%\AuthorClaw\vault.key` on Windows, `~/.authorclaw/vault.key` elsewhere) so encrypted API keys
 never sync to cloud drives. To move Fibb to another machine, copy that one file.
 
 ### Start with Docker
