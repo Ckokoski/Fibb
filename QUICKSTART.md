@@ -2,70 +2,20 @@
 
 Get Fibb running and writing in under 5 minutes.
 
-## Prerequisites
-
-- **Node.js 22+** (check: `node --version`)
-- **A Gemini API key** (free at [aistudio.google.com](https://aistudio.google.com))
-- **Optional:** Telegram bot token (for mobile control)
-
-## Install
+## Quick Start (2 minutes, no Docker)
 
 ```bash
-git clone https://github.com/Ckokoski/Fibb.git
-cd authoragent
+git clone https://github.com/Ckokoski/Fibb.git fibb
+cd fibb
 npm install
+npm start
 ```
 
-## Start
+Your browser opens http://localhost:3847 automatically. Fibb says hello and asks your name and what you're
+working on. If no AI provider is reachable, the chat shows one card: paste a free Gemini key
+(aistudio.google.com) or install Ollama. That's the whole setup.
 
-```bash
-npx tsx gateway/src/index.ts
-```
-
-You should see:
-
-```
-  Fibb v3.0.0
-  ═══════════════════════════════════
-  The Autonomous AI Writing Agent
-  ...
-  ✓ Skills: 25+ loaded
-  ✓ Goal engine: 8 templates + dynamic AI planning
-  ═══════════════════════════════════
-  Fibb is ready to write
-  Dashboard: http://localhost:3847
-```
-
-## Configure
-
-1. Open **http://localhost:3847** in your browser
-2. Go to the **Settings** tab
-3. Paste your **Gemini API key** and click Save
-4. The provider status should show "Gemini" as active
-
-## Your First Task
-
-### Option A: Dashboard
-1. Go to the **Agent** tab
-2. Type: "Write me a short story about a robot who learns to paint"
-3. Click **Go**
-4. Watch the Activity Log tab as Fibb plans and executes
-
-### Option B: Telegram
-1. In Settings, paste your **Telegram Bot Token** and click Save
-2. Click **Connect Telegram**
-3. Open your bot in Telegram and send:
-   ```
-   /goal write me a short story about a robot who learns to paint
-   ```
-4. Fibb plans the steps and runs them, sending you updates
-
-### Option C: API
-```bash
-curl -X POST http://localhost:3847/api/goals \
-  -H 'Content-Type: application/json' \
-  -d '{"title":"Robot Story","description":"Write a short story about a robot who learns to paint","planning":"dynamic"}'
-```
+Docker is only for always-on VPS deployments (see SECURITY.md); you never need it on your own PC.
 
 ## View Results
 

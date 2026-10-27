@@ -1,6 +1,6 @@
 # Fibb
 
-**The free, open-source AI writing agent that runs the entire book pipeline on your own machine.**
+**The AI writing partner for authors. Knows your book, works while you sleep, talks like a friend.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org)
@@ -101,14 +101,9 @@ Per-stage cost routing is automatic: outlines and research use free models, draf
 
 ## Dashboard
 
-Six panels, no clutter:
-
-- **Home** — Start a Book, writing momentum (streak/words), your active books with "Continue writing →", getting-started checklist
-- **Books** — your library; each book opens the journey view
-- **Personas** — pen names, voices, per-persona activity
-- **Library** — uploads and compiled outputs
-- **Tools** — every tool available standalone (Revise & Critique / Craft / Publishing & Marketing) for one-off use outside a book
-- **Settings** — Connections, Integrations, Automation, Data & Memory, Preferences
+Fibb has one home: the conversation. A slim rail holds Chat, Books, Ideas, Review, and Settings; the
+Tonight panel shows what Fibb will do while you sleep. The previous dashboard is still reachable at
+`/legacy` during the transition.
 
 ## Security
 

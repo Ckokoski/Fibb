@@ -40,13 +40,17 @@ cd authoragent
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 
-# 3. Create .env with your vault key
-echo "AUTHORCLAW_VAULT_KEY=your-64-char-hex-key-here" > .env
-chmod 600 .env
+# 3. No vault key to create; see "Vault key" below
 
 # 4. Install dependencies (if running without Docker)
 npm ci
 ```
+
+### Vault key
+
+You do not need to create one. On first start Fibb generates a vault key and stores it outside the repo
+(`%LOCALAPPDATA%\AuthorClawault.key` on Windows, `~/.authorclaw/vault.key` elsewhere) so encrypted API keys
+never sync to cloud drives. To move Fibb to another machine, copy that one file.
 
 ### Start with Docker
 ```bash
