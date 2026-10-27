@@ -1,0 +1,9 @@
+{
+  "name": "Fibb",
+  "short_name": "Fibb",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101115",
+  "theme_color": "#101115",
+  "icons": []
+}

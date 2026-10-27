@@ -5,6 +5,9 @@
   "main": "gateway/src/index.ts",
   "type": "module",
   "scripts": {
+    "app:install": "cd app && npm install",
+    "app:dev": "cd app && npm run dev",
+    "app:build": "cd app && npm run build",
     "start": "node --import tsx gateway/src/index.ts",
     "dev": "node --watch --import tsx gateway/src/index.ts",
     "build": "tsc",

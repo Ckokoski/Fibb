@@ -43,3 +43,5 @@ ROADMAP.md
 dashboard/dist/index.html.bak
 
 .superpowers/
+app/node_modules/
+app/dist/
