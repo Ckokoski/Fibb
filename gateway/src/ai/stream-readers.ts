@@ -3,6 +3,7 @@
  * readNdjson: one JSON object per line (Ollama).
  * readSse: Server-Sent Events, `data:` lines hold JSON (Gemini alt=sse, OpenAI-compatible, Anthropic).
  * Both tolerate chunk boundaries anywhere and never throw on a bad line.
+ * Consumer callback errors propagate to the caller; only parse errors are skipped.
  */
 
 export async function readNdjson(
@@ -16,16 +17,23 @@ export async function readNdjson(
     const { value, done } = await reader.read();
     if (done) break;
     buf += dec.decode(value, { stream: true });
+    buf = buf.replace(/\r\n/g, '\n');
     let nl: number;
     while ((nl = buf.indexOf('\n')) >= 0) {
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);
       if (!line) continue;
-      try { onObject(JSON.parse(line)); } catch { /* skip malformed line */ }
+      let obj: any;
+      try { obj = JSON.parse(line); } catch { continue; } // skip malformed line
+      onObject(obj);
     }
   }
   const tail = buf.trim();
-  if (tail) { try { onObject(JSON.parse(tail)); } catch { /* ignore */ } }
+  if (tail) {
+    let obj: any;
+    try { obj = JSON.parse(tail); } catch { return; } // ignore malformed tail
+    onObject(obj);
+  }
 }
 
 export async function readSse(
@@ -41,13 +49,16 @@ export async function readSse(
     if (dataLines.length === 0) return true;
     const data = dataLines.join('\n');
     if (data === '[DONE]') return false;
-    try { onData(JSON.parse(data)); } catch { /* skip malformed event */ }
+    let obj: any;
+    try { obj = JSON.parse(data); } catch { return true; } // skip malformed event
+    onData(obj);
     return true;
   };
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
     buf += dec.decode(value, { stream: true });
+    buf = buf.replace(/\r\n/g, '\n');
     let sep: number;
     while ((sep = buf.indexOf('\n\n')) >= 0) {
       const raw = buf.slice(0, sep);

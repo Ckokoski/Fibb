@@ -25,6 +25,16 @@ describe('readNdjson', () => {
     await readNdjson(body, (obj) => seen.push(obj));
     expect(seen).toEqual([{ ok: true }]);
   });
+
+  it('readNdjson handles CRLF line endings', async () => {
+    const seen: any[] = [];
+    await readNdjson(bodyFrom(['{"a":1}\r\n{"b":2}\r\n']), (o) => seen.push(o));
+    expect(seen).toEqual([{ a: 1 }, { b: 2 }]);
+  });
+
+  it('readNdjson propagates errors thrown by the consumer', async () => {
+    await expect(readNdjson(bodyFrom(['{"a":1}\n']), () => { throw new Error('boom'); })).rejects.toThrow('boom');
+  });
 });
 
 describe('readSse', () => {
@@ -38,5 +48,17 @@ describe('readSse', () => {
     const seen: any[] = [];
     await readSse(body, (obj) => seen.push(obj));
     expect(seen).toEqual([{ x: 1 }, { x: 2 }]);
+  });
+
+  it('readSse handles CRLF event separators', async () => {
+    const seen: any[] = [];
+    await readSse(bodyFrom(['data: {"x":1}\r\n\r\ndata: {"x":2}\r\n\r\n']), (o) => seen.push(o));
+    expect(seen).toEqual([{ x: 1 }, { x: 2 }]);
+  });
+
+  it('readSse skips a malformed event and keeps going', async () => {
+    const seen: any[] = [];
+    await readSse(bodyFrom(['data: not json\n\ndata: {"ok":1}\n\n']), (o) => seen.push(o));
+    expect(seen).toEqual([{ ok: 1 }]);
   });
 });
