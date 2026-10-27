@@ -18,6 +18,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
+import { exec } from 'child_process';
 
 import { ConfigService } from './services/config.js';
 import { MemoryService } from './services/memory.js';
@@ -967,11 +968,19 @@ class FibbGateway {
     logger.info('  ✓ WebSocket ready');
 
     // ── Phase 11: Static Dashboard ──
-    const dashboardPath = join(ROOT_DIR, 'dashboard', 'dist');
-    this.app.use(express.static(dashboardPath));
+    const legacyPath = join(ROOT_DIR, 'dashboard', 'dist');
+    const appPath = join(ROOT_DIR, 'app', 'dist');
+    const hasApp = existsSync(join(appPath, 'index.html'));
+
+    // Legacy dashboard stays reachable during the transition.
+    this.app.use('/legacy', express.static(legacyPath));
+    this.app.get('/legacy/*', (_req, res) => res.sendFile(join(legacyPath, 'index.html')));
+
+    // The Fibb app is the root when it has been built; otherwise fall back to the legacy dashboard.
+    const rootPath = hasApp ? appPath : legacyPath;
+    this.app.use(express.static(rootPath));
 
     // JSON 404 handler for API routes — MUST run before SPA fallback
-    // so unmatched /api/ requests get JSON errors instead of the dashboard HTML.
     this.app.use((req: any, res: any, next: any) => {
       if (req.path.startsWith('/api/')) {
         return res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` });
@@ -979,13 +988,11 @@ class FibbGateway {
       next();
     });
 
-    // SPA fallback — any non-API path serves the dashboard HTML
     this.app.get('*', (req, res) => {
-      if (req.path.startsWith('/api/')) return; // already handled above
-      const htmlFile = join(dashboardPath, 'index.html');
-      res.sendFile(htmlFile, (err) => {
+      if (req.path.startsWith('/api/')) return;
+      res.sendFile(join(rootPath, 'index.html'), (err) => {
         if (err && !res.headersSent) {
-          res.status(500).json({ status: 'error', message: 'Fibb running but dashboard HTML not found.' });
+          res.status(500).json({ status: 'error', message: 'Fibb is running but the app build was not found. Run: npm run app:build' });
         }
       });
     });
@@ -1013,6 +1020,12 @@ class FibbGateway {
     logger.info('  ═══════════════════════════════════');
     logger.info('  ✍️  Fibb is ready to write');
     logger.info(`  📡 Dashboard: http://localhost:${this.config.get('server.port', 3847)}`);
+    if (!process.env.AUTHORCLAW_NO_OPEN && !process.env.AUTHORAGENT_NO_OPEN) {
+      const url = `http://localhost:${this.config.get('server.port', 3847)}`;
+      const cmd = process.platform === 'win32' ? `start "" "${url}"`
+        : process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`;
+      exec(cmd, () => { /* best effort */ });
+    }
     logger.info('  ═══════════════════════════════════');
     logger.info('');
   }
