@@ -21,6 +21,7 @@ import { Application } from 'express';
 import { createApiContext } from './context.js';
 
 import { registerSystemRoutes } from './routes/system.js';
+import { registerChatStreamRoutes } from './routes/chat-stream.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerDocumentRoutes } from './routes/documents.js';
 import { registerContextHeartbeatRoutes } from './routes/context-heartbeat.js';
@@ -49,6 +50,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   // this matters for Express route-matching precedence (e.g. static routes
   // like /api/personas/generate must be registered before /api/personas/:id).
   registerSystemRoutes(ctx);
+  registerChatStreamRoutes(ctx);
   registerProjectRoutes(ctx);
   registerDocumentRoutes(ctx);
   registerContextHeartbeatRoutes(ctx);
