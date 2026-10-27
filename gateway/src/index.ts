@@ -237,7 +237,8 @@ class FibbGateway {
         directives: {
           defaultSrc: ["'self'"],
           scriptSrc: ["'self'", "'unsafe-inline'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+          fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
           connectSrc: ["'self'", "http://localhost:3847", "http://127.0.0.1:3847"],
         },
       },
