@@ -41,6 +41,15 @@ describe('ChatHistoryStore', () => {
     expect(readdirSync(join(dir, 'history')).some(f => f.endsWith('.tmp'))).toBe(false);
   });
 
+  it('skips invalid entries instead of throwing on a non-object element', async () => {
+    mkdirSync(join(dir, 'history'), { recursive: true });
+    writeFileSync(join(dir, 'history', 'webchat.json'), JSON.stringify([null, 1, { role: 'user', content: 'ok', timestamp: '2026-01-01T00:00:00.000Z' }]));
+    const store = new ChatHistoryStore(dir);
+    const loaded = await store.load('webchat');
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].content).toBe('ok');
+  });
+
   it('quarantines a corrupt history file and returns empty', async () => {
     mkdirSync(join(dir, 'history'), { recursive: true });
     writeFileSync(join(dir, 'history', 'webchat.json'), '{{{ not json');

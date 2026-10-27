@@ -1,8 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, readdirSync, existsSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { rename } from 'fs/promises';
 import { FactsStore } from './facts.js';
+
+// Wrap rename so one test can make it fail; everything else passes through.
+vi.mock('fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('fs/promises')>();
+  return { ...actual, rename: vi.fn(actual.rename) };
+});
 
 let dir: string;
 let store: FactsStore;
@@ -131,6 +138,23 @@ describe('FactsStore.forget', () => {
     await store.merge({ preferences: ['hates adverbs'] });
     expect(await store.forget('a')).toBe(0);
     expect(store.get().preferences).toEqual(['hates adverbs']);
+  });
+});
+
+describe('FactsStore write safety', () => {
+  it('rejects and leaves no temp file when rename fails', async () => {
+    vi.mocked(rename).mockRejectedValueOnce(new Error('disk full'));
+    await expect(store.merge({ name: 'Chris' })).rejects.toThrow('disk full');
+    expect(readdirSync(dir).filter(f => f.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('serializes overlapping merges so every write lands on disk', async () => {
+    await Promise.all([1, 2, 3, 4, 5].map(i => store.merge({ preferences: [`pref ${i}`] })));
+    const fresh = new FactsStore(dir);
+    await fresh.initialize();
+    const prefs = fresh.get().preferences;
+    expect(prefs).toHaveLength(5);
+    for (let i = 1; i <= 5; i++) expect(prefs).toContain(`pref ${i}`);
   });
 });
 

@@ -4,7 +4,7 @@
  * injected at the top of every system prompt. Distinct from user-model
  * (behavioral stats) and preferences (regex-detected style rules).
  */
-import { mkdir, readFile, writeFile, rename, copyFile } from 'fs/promises';
+import { mkdir, readFile, writeFile, rename, copyFile, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { logger } from './logger.js';
@@ -63,6 +63,7 @@ function cleanPerson(p: unknown): FactPerson | null {
 export class FactsStore {
   private file: string;
   private facts: Facts = empty();
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(memoryDir: string) {
     this.file = join(memoryDir, 'facts.json');
@@ -199,11 +200,29 @@ export class FactsStore {
     }
   }
 
-  private async persist(): Promise<void> {
-    await mkdir(join(this.file, '..'), { recursive: true });
-    const tmp = `${this.file}.tmp`;
-    await writeFile(tmp, JSON.stringify(this.facts, null, 2));
-    await rename(tmp, this.file);
+  /** Writes run one at a time; the returned promise rejects if this write fails. */
+  private persist(): Promise<void> {
+    const data = JSON.stringify(this.facts, null, 2);
+    const next = this.writeChain.then(async () => {
+      await mkdir(join(this.file, '..'), { recursive: true });
+      await writeAtomic(this.file, data);
+    });
+    this.writeChain = next.catch(() => {});
+    return next;
+  }
+}
+
+let writeSeq = 0;
+
+/** Write to a unique temp file beside `file`, then rename over it. Cleans up the temp on failure. */
+async function writeAtomic(file: string, data: string): Promise<void> {
+  const tmp = `${file}.${process.pid}.${Date.now()}.${++writeSeq}.tmp`;
+  try {
+    await writeFile(tmp, data);
+    await rename(tmp, file);
+  } catch (err) {
+    await unlink(tmp).catch(() => {});
+    throw err;
   }
 }
 
