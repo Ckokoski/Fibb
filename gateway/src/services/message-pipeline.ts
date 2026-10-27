@@ -163,19 +163,25 @@ export class MessagePipeline {
 
     // ── "Forget that" — user-directed facts removal (no AI call) ──
     if (!['projects', 'project-engine', 'goal-engine', 'conductor', 'api-silent'].includes(channel)) {
-      const bare = /^\s*(?:fibb[,:]?\s*)?forget\s+(?:that|it)?\s*[.!]?\s*$/i.test(content);
-      const m = bare ? null : content.match(/^\s*(?:fibb[,:]?\s*)?forget\s+(?:that\s+|about\s+)?(.{3,})[.!]?\s*$/i);
-      if (bare || m) {
-        let reply: string;
-        if (bare || !m) {
-          reply = 'Tell me what to forget, like: forget that my deadline is December.';
-        } else {
-          const phrase = m[1].replace(/[.!\s]+$/, '');
-          const n = await this.deps.facts.forget(phrase);
-          reply = n
-            ? `Done, I've forgotten ${n === 1 ? 'that' : `${n} things`} about "${phrase}".`
-            : `I don't have anything about "${phrase}" to forget.`;
-        }
+      const explicit = /^\s*fibb[,:]?\s*forget\b/i.test(content);
+      let phrase: string | null = null;
+      if (explicit) {
+        const em = content.match(/^\s*fibb[,:]?\s*forget\s+(?:that\s+|about\s+|it\s+)?(.{3,})$/i);
+        phrase = em ? em[1].replace(/[.!\s]+$/, '') : null;
+      } else {
+        const im = content.match(/^\s*forget\s+(?:that|about)\s+(.{3,80})[.!]?\s*$/i);
+        if (im && !/[,\n]/.test(im[1])) phrase = im[1].replace(/[.!\s]+$/, '');
+      }
+      let reply: string | null = null;
+      if (explicit && !phrase) {
+        reply = 'Tell me what to forget, like: forget that my deadline is December.';
+      } else if (phrase) {
+        const n = await this.deps.facts.forget(phrase);
+        if (n) reply = `Done, I've forgotten ${n === 1 ? 'that' : `${n} things`} about "${phrase}".`;
+        else if (explicit) reply = `I don't have anything about "${phrase}" to forget.`;
+        // implicit + nothing matched: fall through to the AI path
+      }
+      if (reply !== null) {
         const hist = await this.getHistory(channel);
         hist.push({ role: 'user', content, timestamp: new Date() });
         hist.push({ role: 'assistant', content: reply, timestamp: new Date() });

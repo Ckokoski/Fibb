@@ -51,12 +51,34 @@ describe('"forget that" user path', () => {
     expect(out[0]).toContain('forgotten that about "I hate adverbs"');
     expect(calls.save.length).toBe(1);
   });
-  it('bare "forget that" asks what to forget', async () => {
+  it('bare "forget that" goes to the AI', async () => {
     const calls = newCalls();
-    const out: string[] = [];
-    await new MessagePipeline(makeDeps(calls)).handleMessage('forget that', 'webchat', t => out.push(t));
-    expect(out[0]).toMatch(/Tell me what to forget/);
+    await new MessagePipeline(makeDeps(calls)).handleMessage('forget that', 'webchat', () => {});
     expect(calls.forget).toEqual([]);
+    expect(calls.complete).toBe(1);
+  });
+  it('creative prose with a comma is not swallowed', async () => {
+    const calls = newCalls();
+    await new MessagePipeline(makeDeps(calls)).handleMessage('Forget the plan, Mara runs the heist', 'webchat', () => {});
+    expect(calls.forget).toEqual([]);
+    expect(calls.complete).toBe(1);
+  });
+  it('implicit forget with no match falls through to the AI', async () => {
+    const calls = newCalls();
+    const deps: any = makeDeps(calls);
+    deps.facts.forget = async (p: string) => { calls.forget.push(p); return 0; };
+    await new MessagePipeline(deps).handleMessage('forget that quantum physics', 'webchat', () => {});
+    expect(calls.forget).toEqual(['quantum physics']);
+    expect(calls.complete).toBe(1);
+  });
+  it('explicit "fibb, forget" with no match replies without the AI', async () => {
+    const calls = newCalls();
+    const deps: any = makeDeps(calls);
+    deps.facts.forget = async (p: string) => { calls.forget.push(p); return 0; };
+    const out: string[] = [];
+    await new MessagePipeline(deps).handleMessage('fibb, forget quantum physics', 'webchat', t => out.push(t));
+    expect(calls.complete + calls.stream).toBe(0);
+    expect(out[0]).toContain("don't have anything");
   });
   it('a normal message calls the router', async () => {
     const calls = newCalls();

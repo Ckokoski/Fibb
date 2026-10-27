@@ -23,7 +23,7 @@ export function registerChatStreamRoutes(ctx: ApiContext): void {
     res.flushHeaders();
     let closed = false;
     let terminal = false;
-    req.on('close', () => { closed = true; });
+    res.on('close', () => { closed = true; });
     const send = (obj: any) => {
       if (closed) return;
       if (obj?.type === 'done' || obj?.type === 'error') terminal = true;
