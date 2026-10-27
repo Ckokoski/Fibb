@@ -1075,6 +1075,14 @@ export class AIRouter {
     };
   }
 
+  /** First available provider in cheapest-first order, or null. */
+  getCheapestAvailableProviderId(): string | null {
+    for (const id of ['ollama', 'gemini', 'deepseek', 'openrouter', 'openai', 'claude']) {
+      if (this.providers.get(id)?.available) return id;
+    }
+    return null;
+  }
+
   getActiveProviders(): AIProvider[] {
     return Array.from(this.providers.values()).filter(p => p.available);
   }

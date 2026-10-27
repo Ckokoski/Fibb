@@ -21,7 +21,14 @@ export function registerChatStreamRoutes(ctx: ApiContext): void {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
-    const send = (obj: unknown) => { res.write(`data: ${JSON.stringify(obj)}\n\n`); };
+    let closed = false;
+    let terminal = false;
+    req.on('close', () => { closed = true; });
+    const send = (obj: any) => {
+      if (closed) return;
+      if (obj?.type === 'done' || obj?.type === 'error') terminal = true;
+      res.write(`data: ${JSON.stringify(obj)}\n\n`);
+    };
 
     try {
       await gateway.handleMessage(
@@ -36,6 +43,7 @@ export function registerChatStreamRoutes(ctx: ApiContext): void {
         ? 'No AI provider is reachable. Paste a free Gemini key or install Ollama.'
         : 'AI error: ' + msg });
     }
+    if (!terminal && !closed) send({ type: 'done', content: '' });
     res.end();
   });
 

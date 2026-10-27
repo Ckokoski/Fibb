@@ -161,6 +161,30 @@ export class MessagePipeline {
       return;
     }
 
+    // ── "Forget that" — user-directed facts removal (no AI call) ──
+    if (!['projects', 'project-engine', 'goal-engine', 'conductor', 'api-silent'].includes(channel)) {
+      const bare = /^\s*(?:fibb[,:]?\s*)?forget\s+(?:that|it)?\s*[.!]?\s*$/i.test(content);
+      const m = bare ? null : content.match(/^\s*(?:fibb[,:]?\s*)?forget\s+(?:that\s+|about\s+)?(.{3,})[.!]?\s*$/i);
+      if (bare || m) {
+        let reply: string;
+        if (bare || !m) {
+          reply = 'Tell me what to forget, like: forget that my deadline is December.';
+        } else {
+          const phrase = m[1].replace(/[.!\s]+$/, '');
+          const n = await this.deps.facts.forget(phrase);
+          reply = n
+            ? `Done, I've forgotten ${n === 1 ? 'that' : `${n} things`} about "${phrase}".`
+            : `I don't have anything about "${phrase}" to forget.`;
+        }
+        const hist = await this.getHistory(channel);
+        hist.push({ role: 'user', content, timestamp: new Date() });
+        hist.push({ role: 'assistant', content: reply, timestamp: new Date() });
+        this.persistHistory(channel);
+        respond(reply);
+        return;
+      }
+    }
+
     // ── Log the interaction ──
     this.deps.audit.log('message', 'received', { channel, length: content.length });
 
@@ -288,8 +312,8 @@ export class MessagePipeline {
 
       await this.deps.memory.process(content, response.text);
 
-      if (!skipHistory && !channel.startsWith('project')) {
-        const extractProvider = provider.id;
+      if (!skipHistory && !channel.startsWith('project') && content.trim().length >= 12) {
+        const extractProvider = this.deps.aiRouter.getCheapestAvailableProviderId() ?? provider.id;
         this.deps.facts.extractFromTurn(content, response.text, async (system, user) => {
           const r = await this.deps.aiRouter.complete({
             provider: extractProvider, system, messages: [{ role: 'user', content: user }], maxTokens: 400, temperature: 0,

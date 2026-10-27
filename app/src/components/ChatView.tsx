@@ -23,14 +23,16 @@ function load(): ChatMessage[] {
   return [{ id: 'greet', role: 'assistant', content: GREETING }];
 }
 
-export function ChatView({ onTurn }: { onTurn: () => void }) {
+export function ChatView({ onTurn, active }: { onTurn: () => void; active: boolean }) {
   const [msgs, setMsgs] = useState<ChatMessage[]>(load);
   const [busy, setBusy] = useState(false);
   const [needsProvider, setNeedsProvider] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { try { localStorage.setItem(STORE, JSON.stringify(msgs.slice(-200))); } catch { /* ignore */ } }, [msgs]);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs.length, busy]);
+  const lastLen = msgs[msgs.length - 1]?.content.length ?? 0;
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs.length, lastLen, busy]);
+  useEffect(() => { if (active) endRef.current?.scrollIntoView(); }, [active]);
 
   const send = async (text: string) => {
     const uid = crypto.randomUUID();

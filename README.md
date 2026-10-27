@@ -72,8 +72,8 @@ The unsolved problem of AI writing is book-length consistency. Fibb ships a tier
 ## Quick Start
 
 ```bash
-git clone https://github.com/Ckokoski/Fibb.git
-cd authoragent
+git clone https://github.com/Ckokoski/Fibb.git fibb
+cd fibb
 npm install
 npm start
 

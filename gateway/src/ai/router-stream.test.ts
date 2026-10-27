@@ -105,3 +105,17 @@ describe('AIRouter.completeStream', () => {
     expect(f).not.toHaveBeenCalled();
   });
 });
+
+describe('AIRouter.getCheapestAvailableProviderId', () => {
+  it('skips unavailable providers', () => {
+    const r = new AIRouter({}, fakeVault, fakeCosts);
+    const mk = (id: string, available: boolean) => ({ id, name: id, tier: 'free', endpoint: '', model: 'm', maxTokens: 1, costPer1kInput: 0, costPer1kOutput: 0, available });
+    (r as any).providers.clear();
+    (r as any).providers.set('ollama', mk('ollama', false));
+    (r as any).providers.set('gemini', mk('gemini', true));
+    (r as any).providers.set('claude', mk('claude', true));
+    expect(r.getCheapestAvailableProviderId()).toBe('gemini');
+    (r as any).providers.clear();
+    expect(r.getCheapestAvailableProviderId()).toBeNull();
+  });
+});
