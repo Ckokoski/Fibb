@@ -19,7 +19,7 @@ Docker is only for always-on VPS deployments (see SECURITY.md); you never need i
 
 ## View Results
 
-- **Dashboard** → Activity Log tab shows everything the agent did
+- **Chat** — Fibb tells you what it did and links the files; the previous dashboard is still available at http://localhost:3847/legacy
 - **Files**: `workspace/projects/` contains all generated content
 - **Telegram**: Use `/files` to list, `/read [file]` to preview
 

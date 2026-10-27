@@ -8,7 +8,7 @@ Quick reference for starting, stopping, and managing Fibb.
 
 ### Start the server
 ```bash
-cd C:\Users\chris\OneDrive\Documents\Automations\Fibb\authoragent
+cd fibb
 npm start
 ```
 
@@ -34,7 +34,7 @@ Open browser to: **http://localhost:3847**
 ```bash
 # 1. Clone the repo
 git clone https://github.com/Ckokoski/Fibb.git
-cd authoragent
+cd fibb
 
 # 2. Install Node 22+ (if running without Docker)
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
