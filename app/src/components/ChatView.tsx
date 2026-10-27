@@ -48,7 +48,7 @@ export function ChatView({ onTurn }: { onTurn: () => void }) {
         }
       }
     } catch {
-      setMsgs(m => m.map(x => x.id === aid ? { ...x, content: x.content || 'Fibb couldn't reach the server. Is it running?', streaming: false } : x));
+      setMsgs(m => m.map(x => x.id === aid ? { ...x, content: x.content || 'Fibb could not reach the server. Is it running?', streaming: false } : x));
     } finally {
       setBusy(false);
       onTurn();
