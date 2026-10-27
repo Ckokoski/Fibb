@@ -20,7 +20,7 @@ npm run dev
 ### Stop the server
 Press `Ctrl+C` in the terminal, or:
 ```bash
-taskkill /F /FI "WINDOWTITLE eq *authoragent*"
+taskkill /F /FI "WINDOWTITLE eq *fibb*"
 ```
 
 ### Dashboard
@@ -33,7 +33,7 @@ Open browser to: **http://localhost:3847**
 ### First-time setup
 ```bash
 # 1. Clone the repo
-git clone https://github.com/Ckokoski/Fibb.git
+git clone https://github.com/Ckokoski/Fibb.git fibb
 cd fibb
 
 # 2. Install Node 22+ (if running without Docker)
