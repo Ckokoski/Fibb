@@ -33,7 +33,7 @@ Open browser to: **http://localhost:3847**
 ### First-time setup
 ```bash
 # 1. Clone the repo
-git clone https://github.com/Ckokoski/authoragent.git
+git clone https://github.com/Ckokoski/Fibb.git
 cd authoragent
 
 # 2. Install Node 22+ (if running without Docker)

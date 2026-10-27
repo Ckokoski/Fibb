@@ -11,7 +11,7 @@ Get AuthorAgent running and writing in under 5 minutes.
 ## Install
 
 ```bash
-git clone https://github.com/Ckokoski/authoragent.git
+git clone https://github.com/Ckokoski/Fibb.git
 cd authoragent
 npm install
 ```
