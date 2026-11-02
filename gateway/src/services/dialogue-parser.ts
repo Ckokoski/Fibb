@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Shared Dialogue Parser
+ * Fibb Shared Dialogue Parser
  *
  * Pure, stateless dialogue-extraction / speaker-attribution helpers shared by
  * character-voices.ts (per-character StyleClone fingerprinting) and

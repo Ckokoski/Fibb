@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Author Personas Service
+ * Fibb Author Personas Service
  * Manage pen names, writing styles, and author identities for multi-persona publishing.
  */
 

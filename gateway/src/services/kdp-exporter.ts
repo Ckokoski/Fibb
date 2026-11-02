@@ -1,5 +1,5 @@
 /**
- * AuthorAgent KDP Exporter
+ * Fibb KDP Exporter
  *
  * Converts a plain-text or lightly-formatted blurb into the exact HTML subset
  * that Amazon KDP accepts in the Book Description field, plus a 400-char

@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Model Config Store
+ * Fibb Model Config Store
  *
  * Persists a user-editable map of provider id -> model string so the owner can
  * switch a provider's model (e.g. try Claude Fable 5, or a future GPT/Gemini

@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Series Bible
+ * Fibb Series Bible
  *
  * Cross-project memory for authors running multi-book series. Merges entity
  * indexes from every member project's ContextEngine into one canonical

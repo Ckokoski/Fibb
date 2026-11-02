@@ -1,7 +1,7 @@
 ---
 name: error-recovery
 description: Intelligent error diagnosis, automatic recovery strategies, and prevention of recurring failures
-author: AuthorAgent
+author: Fibb
 version: 1.0.0
 triggers:
   - "error"
@@ -20,7 +20,7 @@ permissions:
 
 # Error Recovery — Core Skill
 
-When things go wrong, AuthorAgent doesn't just report the error — it diagnoses the root cause, attempts automatic recovery, and remembers the fix for next time.
+When things go wrong, Fibb doesn't just report the error — it diagnoses the root cause, attempts automatic recovery, and remembers the fix for next time.
 
 ## Error Categories
 

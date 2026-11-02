@@ -1,7 +1,7 @@
 ---
 name: revise
 description: Multi-pass revision - developmental editing, line editing, copy editing
-author: AuthorAgent
+author: Fibb
 version: 1.0.0
 triggers:
   - "revise"

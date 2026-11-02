@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Contradiction Detector
+ * Fibb Contradiction Detector
  *
  * ACTIVE CONTRADICTION DETECTION — a ConStory-style consistency checker that
  * diffs a single chapter against the project's persisted entity DB and the

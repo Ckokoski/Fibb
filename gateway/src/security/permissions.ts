@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Permission Manager
+ * Fibb Permission Manager
  * Capability-based access control with 4 presets
  */
 

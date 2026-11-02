@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Project Engine — V4
+ * Fibb Project Engine — V4
  * Autonomous book production at scale
  *
  * 6 Core Project Types (chainable into a Pipeline):
@@ -371,7 +371,7 @@ export class ProjectEngine {
 
       const validTaskTypes = Object.keys(TASK_TYPE_MAP).join(', ');
 
-      const plannerPrompt = `You are a task planner for AuthorAgent, an autonomous AI writing agent.
+      const plannerPrompt = `You are a task planner for Fibb, an autonomous AI writing agent.
 
 The user wants to accomplish something. Your job is to break it down into a sequence of concrete, executable steps.
 

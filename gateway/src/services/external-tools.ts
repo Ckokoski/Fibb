@@ -1,5 +1,5 @@
 /**
- * AuthorAgent External Tools Bridge
+ * Fibb External Tools Bridge
  *
  * Thin wrappers around sibling Python tools in ../Automations/. These spawn
  * the tools as short-lived child processes (not via the Orchestrator's
@@ -40,7 +40,7 @@ export interface PacingHeatmap {
 }
 
 const DEFAULT_SEARCH_ROOTS = [
-  // Relative to the AuthorAgent repo root.
+  // Relative to the Fibb repo root.
   '..',
   // Common install location for the Automations folder.
   join('..', '..', 'Automations'),

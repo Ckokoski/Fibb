@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Cost Tracker
+ * Fibb Cost Tracker
  * Budget monitoring with daily/monthly caps.
  * Persisted to disk so budget survives restarts.
  */

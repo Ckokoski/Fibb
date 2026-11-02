@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Beta Reader Service
+ * Fibb Beta Reader Service
  *
  * Runs a manuscript (chapter by chapter) through a panel of simulated reader
  * personas and returns structured feedback: tension score, confusion flags,

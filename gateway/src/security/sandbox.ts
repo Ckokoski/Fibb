@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Sandbox Guard
+ * Fibb Sandbox Guard
  * Constrains all file operations to the workspace directory.
  *
  * Thin wrapper around security/paths.ts — the robust path-safety logic lives

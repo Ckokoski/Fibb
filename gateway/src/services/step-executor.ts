@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Step Executor
+ * Fibb Step Executor
  *
  * Extracted verbatim from projects.ts (Phase 2 refactor). Owns the
  * step-execution engine that ProjectEngine previously inlined:
@@ -31,7 +31,7 @@ const log = logger.child('[projects]');
  * The gateway's message-pipeline entry point, injected so the executor can
  * run a step through the full AI stack (routing, fallback, injection checks,
  * cost tracking) WITHOUT importing the gateway class — that would create a
- * circular dependency. Signature mirrors AuthorAgentGateway.handleMessage.
+ * circular dependency. Signature mirrors FibbGateway.handleMessage.
  */
 export type MessageHandler = (
   content: string,
@@ -841,7 +841,7 @@ export class StepExecutor {
 
             const docxBuffer = await generateDocxBuffer({
               title: currentProject.title,
-              author: 'AuthorAgent',
+              author: 'Fibb',
               content: manuscriptMd,
             });
             await writeFile(join(projectDir, 'manuscript.docx'), docxBuffer);

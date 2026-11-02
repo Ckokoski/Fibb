@@ -1,9 +1,9 @@
 /**
- * AuthorAgent Preference Store
+ * Fibb Preference Store
  * Tracks user preferences — both explicitly stated and auto-detected
  * from conversation patterns. Persisted as JSON.
  *
- * Preferences are injected into the system prompt so AuthorAgent personalises
+ * Preferences are injected into the system prompt so Fibb personalises
  * every interaction based on what the user likes/dislikes.
  *
  * Ported from Sneakers, enhanced with author-specific preference categories.

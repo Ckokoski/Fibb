@@ -1,7 +1,7 @@
 ---
 name: nonfiction-research
 description: Academic source gathering, citation management, fact-checking for nonfiction
-author: AuthorAgent
+author: Fibb
 version: 1.0.0
 triggers:
   - "nonfiction"

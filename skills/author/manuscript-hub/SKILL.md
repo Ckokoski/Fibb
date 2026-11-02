@@ -1,7 +1,7 @@
 ---
 name: manuscript-hub
 description: Track word count, chapters, progress, streaks, and project status
-author: AuthorAgent
+author: Fibb
 version: 1.0.0
 triggers:
   - "word count"

@@ -1,5 +1,5 @@
 /**
- * AuthorAgent API Routes
+ * Fibb API Routes
  * REST API for the dashboard and external integrations
  *
  * This file used to be a ~5,500-line monolith registering all endpoints
@@ -21,6 +21,7 @@ import { Application } from 'express';
 import { createApiContext } from './context.js';
 
 import { registerSystemRoutes } from './routes/system.js';
+import { registerChatStreamRoutes } from './routes/chat-stream.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerDocumentRoutes } from './routes/documents.js';
 import { registerContextHeartbeatRoutes } from './routes/context-heartbeat.js';
@@ -37,15 +38,10 @@ import { registerManuscriptQualityRoutes } from './routes/manuscript-quality.js'
 import { registerMemorySearchRoutes } from './routes/memory-search.js';
 import { registerUserModelRoutes } from './routes/user-model.js';
 import { registerCronRoutes } from './routes/cron.js';
-import { registerSkillDraftRoutes } from './routes/skill-drafts.js';
 import { registerJudgeCharacterVoiceRoutes } from './routes/judge-character-voices.js';
 import { registerResearchLookupRoutes } from './routes/research-lookup.js';
-import { registerVideoResearchRoutes } from './routes/video-research.js';
 import { registerStructuresPlotRoutes } from './routes/structures-plot.js';
-import { registerWave3GatedRoutes } from './routes/wave3-gated.js';
-import { registerWebsiteRoutes } from './routes/website.js';
 import { registerReaderPanelRoutes } from './routes/reader-panel.js';
-import { registerReaderFeedbackRoutes } from './routes/reader-feedback.js';
 
 export function createAPIRoutes(app: Application, gateway: any, rootDir?: string): void {
   const ctx = createApiContext(app, gateway, rootDir);
@@ -54,6 +50,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   // this matters for Express route-matching precedence (e.g. static routes
   // like /api/personas/generate must be registered before /api/personas/:id).
   registerSystemRoutes(ctx);
+  registerChatStreamRoutes(ctx);
   registerProjectRoutes(ctx);
   registerDocumentRoutes(ctx);
   registerContextHeartbeatRoutes(ctx);
@@ -70,13 +67,8 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   registerMemorySearchRoutes(ctx);
   registerUserModelRoutes(ctx);
   registerCronRoutes(ctx);
-  registerSkillDraftRoutes(ctx);
   registerJudgeCharacterVoiceRoutes(ctx);
   registerResearchLookupRoutes(ctx);
-  registerVideoResearchRoutes(ctx);
   registerStructuresPlotRoutes(ctx);
-  registerWave3GatedRoutes(ctx);
-  registerWebsiteRoutes(ctx);
   registerReaderPanelRoutes(ctx);
-  registerReaderFeedbackRoutes(ctx);
 }

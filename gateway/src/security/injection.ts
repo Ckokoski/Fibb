@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Injection Detector
+ * Fibb Injection Detector
  * Detects common prompt injection patterns.
  *
  * Severity model:

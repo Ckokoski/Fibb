@@ -1,5 +1,5 @@
 /**
- * AuthorAgent Author Goals & Career Planner
+ * Fibb Author Goals & Career Planner
  *
  * Long-horizon goal tracking for author careers:
  *   "Write 80,000 words in 90 days"
@@ -9,7 +9,7 @@
  * Tracks target, deadline, current progress, daily velocity, and projects
  * a completion date based on recent pace. Persists to disk.
  *
- * Integrates with AuthorAgent's word-count tracking (via ProjectEngine's
+ * Integrates with Fibb's word-count tracking (via ProjectEngine's
  * completed writing steps) so word-count goals auto-advance without
  * manual updates.
  */

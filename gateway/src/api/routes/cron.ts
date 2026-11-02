@@ -62,7 +62,4 @@ export function registerCronRoutes(ctx: ApiContext): void {
     if (!schedule) return res.status(400).json({ error: 'schedule required' });
     res.json(validateCronExpression(schedule));
   });
-
-  // ═══════════════════════════════════════════════════════════
-  // Auto-Skill Drafts (review before promotion to skills/ops/)
 }
