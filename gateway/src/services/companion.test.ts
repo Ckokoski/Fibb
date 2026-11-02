@@ -15,7 +15,11 @@ describe('CompanionService', () => {
     expect(svc.getActive().id).toBe('nib');
     expect(svc.getActive().name).toBe('Fibb');
     expect(svc.getActive().look).toBe('nib');
-    expect(svc.getActive().voicePreset).toBe('narrator_warm');
+    expect(svc.getActive().voicePreset).toBe('kokoro:af_heart');
+    svc.isVoiceAvailable = () => false;
+    expect(svc.getVoicePreset()).toBe('narrator_warm');
+    svc.isVoiceAvailable = () => true;
+    expect(svc.getVoicePreset()).toBe('kokoro:af_heart');
   });
   it('every look is Fibb; only nib has states; imageFor picks a state image', async () => {
     for (const c of Object.values(COMPANIONS)) { expect(c.name).toBe('Fibb'); expect(c.look).toBe(c.id); }
