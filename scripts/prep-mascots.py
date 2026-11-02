@@ -1,3 +1,5 @@
+"""Run once on the raw 1254px exports. Safe to re-run: already-prepared 512px images are skipped.
+Icons are regenerated from nib.webp every run."""
 # scripts/prep-mascots.py — one-off: crop the baked caption, square, resize, write webp + icons.
 import sys, pathlib
 from PIL import Image
@@ -6,6 +8,8 @@ src_dir = root / 'app' / 'public' / 'mascots'
 icons = root / 'app' / 'public' / 'icons'; icons.mkdir(exist_ok=True)
 for p in sorted(src_dir.glob('*.webp')):
     im = Image.open(p).convert('RGB')
+    if im.size == (512, 512):
+        print('skip', p.name, '(already prepared)'); continue
     w, h = im.size
     im = im.crop((0, 0, w, int(h * 0.90)))          # drop the caption strip
     side = min(im.size); l = (im.width - side) // 2; t = (im.height - side) // 2

@@ -4,7 +4,7 @@
  * default; local whisper.cpp when AUTHORAGENT_WHISPER_PATH points at the
  * `whisper-cli` binary (model path in AUTHORAGENT_WHISPER_MODEL).
  */
-import { writeFile, readFile, unlink, mkdtemp } from 'fs/promises';
+import { writeFile, readFile, rm, mkdtemp } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFile } from 'child_process';
@@ -38,9 +38,9 @@ export class TranscribeService {
 
   private async viaGemini(audio: Buffer, mimeType: string, key: string): Promise<TranscribeResult> {
     const endpoint = this.opts.geminiEndpoint ?? 'https://generativelanguage.googleapis.com/v1beta';
-    const res = await fetch(`${endpoint}/models/${this.opts.geminiModel}:generateContent?key=${key}`, {
+    const res = await fetch(`${endpoint}/models/${this.opts.geminiModel}:generateContent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [
           { inlineData: { mimeType, data: audio.toString('base64') } },
@@ -74,7 +74,7 @@ export class TranscribeService {
       if (!text) throw new Error('whisper returned no transcript');
       return { text, provider: 'whisper' };
     } finally {
-      for (const f of [inFile, `${outBase}.txt`]) { try { await unlink(f); } catch { /* ignore */ } }
+      await rm(dir, { recursive: true, force: true });
     }
   }
 }
