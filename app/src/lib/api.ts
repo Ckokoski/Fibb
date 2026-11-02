@@ -60,7 +60,8 @@ export async function saveGeminiKey(key: string): Promise<boolean> {
   return r.ok;
 }
 
-export interface Companion { id: string; name: string; voicePreset: string; tagline: string; image: string; defaultVoicePreset?: string }
+export type MascotStateName = 'idle' | 'thinking' | 'listening' | 'celebrating';
+export interface Companion { id: string; look?: string; name: string; voicePreset: string; tagline: string; image: string; defaultVoicePreset?: string; states?: Record<MascotStateName, string> }
 export async function getCompanions(): Promise<{ companions: Companion[]; activeId: string }> {
   try {
   const r = await fetch('/api/companions'); return r.ok ? r.json() : { companions: [], activeId: 'nib' };
@@ -71,18 +72,37 @@ export async function getCompanion(): Promise<Companion | null> {
   const r = await fetch('/api/companion'); return r.ok ? r.json() : null;
   } catch { return null; }
 }
-export async function setCompanion(body: { id?: string; voicePreset?: string | null }): Promise<Companion | null> {
+export async function setCompanion(body: { look?: string; voicePreset?: string | null }): Promise<Companion | null> {
   try {
   const r = await fetch('/api/companion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   return r.ok ? r.json() : null;
   } catch { return null; }
 }
-export interface VoicePreset { id: string; voice: string; description: string; gender: 'Male' | 'Female' }
-export async function getVoices(): Promise<{ presets: VoicePreset[] }> {
+export interface CatalogVoice { id: string; label: string; gender: 'Female' | 'Male'; accent?: string; note?: string }
+export interface CatalogProvider { provider: string; label: string; available: boolean; status?: any; voices: CatalogVoice[] }
+export interface KokoroStatus { status: string; percent?: number; error?: string }
+export interface VoiceCatalog { activeVoice: string; catalog: CatalogProvider[]; kokoro: KokoroStatus }
+export async function getVoiceCatalog(): Promise<VoiceCatalog> {
   try {
-  const r = await fetch('/api/audio/voices'); return r.ok ? r.json() : { presets: [] };
-  } catch { return { presets: [] }; }
+    const r = await fetch('/api/audio/voices');
+    if (!r.ok) return { activeVoice: '', catalog: [], kokoro: { status: 'idle' } };
+    const j = await r.json();
+    return { activeVoice: j.activeVoice || '', catalog: j.catalog || [], kokoro: j.kokoro || { status: 'idle' } };
+  } catch { return { activeVoice: '', catalog: [], kokoro: { status: 'idle' } }; }
 }
+export async function installKokoro(): Promise<KokoroStatus> {
+  try { const r = await fetch('/api/audio/kokoro/install', { method: 'POST' }); const j = await r.json().catch(() => ({})); return r.ok ? j : { status: 'error', error: j.error || `HTTP ${r.status}` }; }
+  catch { return { status: 'error', error: 'Network error' }; }
+}
+export async function kokoroStatus(): Promise<KokoroStatus> {
+  try { const r = await fetch('/api/audio/kokoro/status'); return r.ok ? r.json() : { status: 'error', error: `HTTP ${r.status}` }; }
+  catch { return { status: 'error', error: 'Network error' }; }
+}
+export async function setActiveVoice(voice: string): Promise<boolean> {
+  try { const r = await fetch('/api/audio/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ voice }) }); return r.ok; } catch { return false; }
+}
+export const setLook = (look: string) => setCompanion({ look });
+export const setVoiceOverride = (id: string | null) => setCompanion({ voicePreset: id });
 // /api/audio/generate returns the TTSResult ({success, file, filename, ...}) with no `url`;
 // the file is served at /api/audio/file/:filename.
 export async function speak(text: string, voice?: string): Promise<string | null> {

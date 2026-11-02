@@ -4,11 +4,11 @@ import { startListening, stopPlayback, playUrl, micSupported, type Listener } fr
 import { Message, type ChatMessage } from './Message';
 import { Composer } from './Composer';
 import { FirstRunCard } from './FirstRunCard';
-import { CompanionPicker } from './CompanionPicker';
-import type { Companion } from '../lib/api';
 
 const STORE = 'fibb_chat_webchat';
-const greeting = (name: string) => `Hi, I'm ${name}. I'm your writing partner inside Fibb: I keep your book straight, draft when you want me to, and work on it while you sleep. What's your name, and what are you working on?`;
+const GREETING = "Hi, I'm Fibb. I keep your book straight, draft when you ask, and work on it while you sleep. What's your name, and what are you working on?";
+// Cheap heuristic: a reply that sounds like praise or a streak milestone makes the hero celebrate for a moment.
+const CELEBRATE_RE = /\b(congrat|well done|nice work|🎉|streak)\b/i;
 
 function load(): ChatMessage[] {
   try {
@@ -17,18 +17,18 @@ function load(): ChatMessage[] {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
         const restored = (parsed as ChatMessage[])
-          .map(m => ({ ...m, streaming: false }))
+          .map(m => ({ ...m, streaming: false, ...(m.id === 'greet' ? { content: GREETING } : {}) }))
           .filter(m => !(m.role === 'assistant' && !m.content));
         if (restored.length) return restored;
       }
     }
   } catch { /* ignore */ }
-  return [{ id: 'greet', role: 'assistant', content: greeting('Fibb') }];
+  return [{ id: 'greet', role: 'assistant', content: GREETING }];
 }
 
-export function ChatView({ onTurn, active, companionName, readAloud, handsFree, voicePreset, onboarding, onPicked, onBusy, onListening, onOpenTonight }: {
+export function ChatView({ onTurn, active, companionName, readAloud, handsFree, voicePreset, onBusy, onListening, onCelebrate, onOpenTonight }: {
   onTurn: () => void; active: boolean; companionName: string; readAloud: boolean; handsFree: boolean; voicePreset?: string;
-  onboarding: boolean; onPicked: (c: Companion) => void; onBusy: (b: boolean) => void; onListening: (b: boolean) => void; onOpenTonight: () => void;
+  onBusy: (b: boolean) => void; onListening: (b: boolean) => void; onCelebrate: () => void; onOpenTonight: () => void;
 }) {
   const [msgs, setMsgs] = useState<ChatMessage[]>(load);
   const [busy, setBusy] = useState(false);
@@ -91,6 +91,7 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
     } finally {
       setBusy(false);
       onTurn();
+      if (CELEBRATE_RE.test(acc)) onCelebrate();
     }
     // Spoken reply runs after the composer is free; audio never blocks it.
     const st = settingsRef.current;
@@ -120,15 +121,8 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
     <>
       <div className="thread">
         <div className="thread-inner">
-          {onboarding && (
-            <div className="card" role="region" aria-label="Choose your companion">
-              <div className="t">Who do you want to write with?</div>
-              <div className="s">Pick a companion. You can change this any time in Settings.</div>
-              <CompanionPicker onPicked={onPicked} />
-            </div>
-          )}
           <div className="day">Today</div>
-          {msgs.map(m => <Message key={m.id} m={m.id === 'greet' ? { ...m, content: greeting(companionName) } : m} onRead={t => { void readOut(t); }} />)}
+          {msgs.map(m => <Message key={m.id} m={m} onRead={t => { void readOut(t); }} />)}
           {needsProvider && <FirstRunCard onDone={() => { setNeedsProvider(false); send('Thanks, you’re connected now. Say hi?'); }} />}
           <div ref={endRef} />
         </div>
