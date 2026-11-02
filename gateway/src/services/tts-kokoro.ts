@@ -39,6 +39,7 @@ export class KokoroEngine {
     })().catch(err => {
       this.progress = { status: 'error', error: String(err?.message || err) };
       this.loading = null;
+      this.files.clear();
       logger.warn('Kokoro load failed', err);
       throw err;
     });

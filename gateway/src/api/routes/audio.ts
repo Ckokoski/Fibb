@@ -8,7 +8,7 @@ import type { ApiContext } from '../context.js';
 import path from 'path';
 import multer from 'multer';
 import { safePath } from '../context.js';
-import { isKnownVoice } from '../../services/tts-catalog.js';
+import { isKnownVoice, parseVoiceId } from '../../services/tts-catalog.js';
 
 // Dedicated memory-storage uploader for audio clips: the shared manuscript
 // `upload` rejects non-.txt/.md/.docx names. 10 MB cap, no extension filter.
@@ -104,10 +104,17 @@ export function registerAudioRoutes(ctx: ApiContext): void {
   // Namespaced voice catalog across providers (edge, kokoro, gemini, elevenlabs).
   app.get('/api/audio/voices', async (_req: Request, res: Response) => {
     if (!services.tts) return res.status(503).json({ error: 'TTS service not initialized' });
+    let elevenLabs: any[] = [];
+    try { elevenLabs = await services.tts.listElevenLabsVoices(); } catch { /* optional */ }
+    const activeVoice = services.tts.getActiveVoice();
     res.json({
-      activeVoice: services.tts.getActiveVoice(),
+      activeVoice,
       catalog: await services.tts.listCatalog(),
       kokoro: services.tts.kokoroStatus(),
+      // Compat-only fields for the pre-catalog app; remove once the UI reads `catalog`.
+      presets: services.tts.listPresets(),
+      elevenLabs,
+      activeProvider: parseVoiceId(activeVoice).provider,
     });
   });
 
@@ -178,6 +185,7 @@ export function registerAudioRoutes(ctx: ApiContext): void {
     if (!services.tts) {
       return res.status(503).json({ error: 'TTS service not initialized' });
     }
+    if (!isKnownVoice(voice)) return res.status(400).json({ error: 'Unknown voice' });
     // Resolve preset name to voice ID before saving
     const resolvedVoice = services.tts.resolveVoice(voice);
     await services.tts.setVoice(resolvedVoice);

@@ -31,4 +31,28 @@ describe('TelegramBridge voice notes', () => {
     expect((spy.mock.calls[0] as any[])[0]).toBe(1);
     expect((spy.mock.calls[0] as any[])[2]).toBe('narrator_warm');
   });
+
+  it('sends wav as a document and mp3 as a voice note', async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import('fs');
+    const { tmpdir } = await import('os');
+    const { join } = await import('path');
+    const dir = mkdtempSync(join(tmpdir(), 'fibb-tgv-'));
+    try {
+      writeFileSync(join(dir, 'x.wav'), Buffer.from('RIFFxxxxWAVE'));
+      writeFileSync(join(dir, 'x.mp3'), Buffer.from('ID3xxxx'));
+      const calls: Array<{ url: string; body: string }> = [];
+      vi.stubGlobal('fetch', vi.fn(async (url: string, init: any) => {
+        calls.push({ url, body: Buffer.from(init.body).toString('latin1') });
+        return { ok: true, text: async () => '' };
+      }));
+      const bridge = new TelegramBridge('dummy', { allowedUsers: [], pairingEnabled: false } as any);
+      expect(await (bridge as any).sendVoice(1, join(dir, 'x.wav'), 'cap')).toBe(true);
+      expect(await (bridge as any).sendVoice(1, join(dir, 'x.mp3'))).toBe(true);
+      expect(calls[0].url.endsWith('/sendDocument')).toBe(true);
+      expect(calls[0].body).toContain('audio/wav');
+      expect(calls[0].body).toContain('name="document"');
+      expect(calls[1].url.endsWith('/sendVoice')).toBe(true);
+      expect(calls[1].body).toContain('audio/mpeg');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
 });
