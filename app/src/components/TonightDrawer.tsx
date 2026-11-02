@@ -10,8 +10,16 @@ export function TonightDrawer({ open, onClose, refreshKey, companion }: { open: 
   closeRef.current = onClose;
   useEffect(() => {
     if (!open) return;
-    const trigger = document.activeElement as HTMLElement | null;
-    const focusHead = () => head.current?.focus({ preventScroll: true });
+    const active = document.activeElement as HTMLElement | null;
+    // Some browsers leave <body> active after a button click; fall back to the Tonight toggle.
+    const trigger = active && active !== document.body ? active : document.querySelector<HTMLElement>('button[aria-label="Tonight"]');
+    const focusHead = () => {
+      const p = panel.current;
+      if (!p || !head.current || p.contains(document.activeElement)) return;
+      head.current.focus({ preventScroll: true });
+    };
+    // Retry until focus actually lands (panel may still be becoming visible).
+    const timers = [60, 260, 600].map(ms => window.setTimeout(focusHead, ms));
     let r2 = 0;
     const r1 = requestAnimationFrame(() => { r2 = requestAnimationFrame(focusHead); });
     const backstop = () => { if (!panel.current?.contains(document.activeElement)) focusHead(); };
@@ -30,6 +38,7 @@ export function TonightDrawer({ open, onClose, refreshKey, companion }: { open: 
     };
     window.addEventListener('keydown', h);
     return () => {
+      timers.forEach(t => window.clearTimeout(t));
       cancelAnimationFrame(r1); cancelAnimationFrame(r2);
       el?.removeEventListener('transitionend', backstop);
       main?.removeAttribute('inert');
