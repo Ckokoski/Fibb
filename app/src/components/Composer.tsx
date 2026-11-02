@@ -8,7 +8,7 @@ export function Composer({ onSend, disabled, listening, onMic, interim, micAvail
   const shown = listening && interim ? interim : text;
   return (
     <div className={`composer${listening ? ' listening' : ''}`}>
-      <textarea ref={ref} rows={1} placeholder={listening ? 'Listening… tap the mic to finish' : 'Talk to your companion…'} value={shown} disabled={disabled || listening}
+      <textarea ref={ref} rows={1} placeholder={listening ? 'Listening… tap the mic to finish' : 'Talk to Fibb…'} value={shown} disabled={disabled || listening}
         onChange={e => { setText(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px'; }}
         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }} aria-label="Message" />
       {micAvailable && (

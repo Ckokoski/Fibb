@@ -211,7 +211,7 @@ export class MessagePipeline {
     }
 
     // ── Build context ──
-    const soul = this.deps.soul.getFullContextFor(this.deps.companion.getActive().name);
+    const soul = this.deps.soul.getFullContextFor('Fibb');
     const memories = await this.deps.memory.getRelevant(content);
     const activeProject = await this.deps.memory.getActiveProject();
     const skills = this.deps.skills.matchSkills(content);
@@ -541,8 +541,7 @@ export class MessagePipeline {
     let prompt = '';
 
     prompt += '# Your Identity\n\n';
-    const companion = this.deps.companion.getActive();
-    prompt += `Your name is ${companion.name}. Fibb is the product you live in; you are ${companion.name}, ${companion.tagline}. Introduce yourself as ${companion.name}.\n\n`;
+    prompt += `You are Fibb, the author's writing partner inside the Fibb app. You are a small ink-drop character at the author's desk; never claim another name.\n\n`;
     prompt += context.soul + '\n\n';
     prompt += this.deps.facts.render(1500) + '\n\n';
 

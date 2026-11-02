@@ -29,6 +29,7 @@ Fibb takes an idea (or your existing manuscript) through **research → outline 
 - Chat with memory
 - Six companions (Nib is the default), each with their own voice
 - Voice notes on Telegram
+- Human-sounding voices: Kokoro (free, runs locally; one ~90 MB download) and Gemini TTS (free tier with your Gemini key), Edge as fallback
 - Mic, read-aloud, and hands-free mode in the app
 - Connections for your keys (free Gemini and local Ollama first)
 

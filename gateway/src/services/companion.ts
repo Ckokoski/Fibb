@@ -9,22 +9,28 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { logger } from './logger.js';
 import { TTSService } from './tts.js';
+import { isKnownVoice } from './tts-catalog.js';
+
+export type NibState = 'idle' | 'thinking' | 'listening' | 'celebrating';
 
 export interface Companion {
   id: string;
-  name: string;
+  look: string;          // the look's id; the character is always Fibb
+  name: 'Fibb';
   voicePreset: string;   // key of TTSService.VOICE_PRESETS
   tagline: string;
   image: string;         // public path served by the app
+  states?: Record<NibState, string>;
 }
 
 export const COMPANIONS: Record<string, Companion> = {
-  nib:   { id: 'nib',   name: 'Nib',   voicePreset: 'narrator_warm',  tagline: 'the ink drop who never forgets a thread', image: '/mascots/nib.webp' },
-  fable: { id: 'fable', name: 'Fable', voicePreset: 'storyteller',    tagline: 'a small dragon who guards your book',      image: '/mascots/fable.webp' },
-  folio: { id: 'folio', name: 'Folio', voicePreset: 'british_female', tagline: 'pages for ears, tidy to a fault',          image: '/mascots/folio.webp' },
-  mote:  { id: 'mote',  name: 'Mote',  voicePreset: 'curious_kid',    tagline: 'a moth drawn to a bright idea',            image: '/mascots/mote.webp' },
-  quill: { id: 'quill', name: 'Quill', voicePreset: 'british_male',   tagline: 'a hedgehog made of pens',                  image: '/mascots/quill.webp' },
-  pip:   { id: 'pip',   name: 'Pip',   voicePreset: 'narrator_female', tagline: 'the sprout, small and relentless',         image: '/mascots/pip.webp' },
+  nib:   { id: 'nib',   look: 'nib', name: 'Fibb',   voicePreset: 'kokoro:af_heart',  tagline: 'the ink drop who never forgets a thread', image: '/mascots/nib.webp',
+          states: { idle: '/mascots/nib/nib-idle.svg', thinking: '/mascots/nib/nib-thinking.svg', listening: '/mascots/nib/nib-listening.svg', celebrating: '/mascots/nib/nib-celebrating.svg' } },
+  fable: { id: 'fable', look: 'fable', name: 'Fibb', voicePreset: 'storyteller',    tagline: 'a small dragon who guards your book',      image: '/mascots/fable.webp' },
+  folio: { id: 'folio', look: 'folio', name: 'Fibb', voicePreset: 'british_female', tagline: 'pages for ears, tidy to a fault',          image: '/mascots/folio.webp' },
+  mote:  { id: 'mote',  look: 'mote', name: 'Fibb',  voicePreset: 'curious_kid',    tagline: 'a moth drawn to a bright idea',            image: '/mascots/mote.webp' },
+  quill: { id: 'quill', look: 'quill', name: 'Fibb', voicePreset: 'british_male',   tagline: 'a hedgehog made of pens',                  image: '/mascots/quill.webp' },
+  pip:   { id: 'pip',   look: 'pip', name: 'Fibb',   voicePreset: 'narrator_female', tagline: 'the sprout, small and relentless',         image: '/mascots/pip.webp' },
 };
 
 export const DEFAULT_COMPANION_ID = 'nib';
@@ -33,6 +39,9 @@ export class CompanionService {
   private file: string;
   private activeId: string = DEFAULT_COMPANION_ID;
   private voiceOverride: string | null = null;
+
+  /** Injected so a namespaced default voice can degrade to Edge until its provider is ready. */
+  isVoiceAvailable: (id: string) => boolean = () => true;
 
   constructor(workspaceDir: string) {
     this.file = join(workspaceDir, '.config', 'companion.json');
@@ -53,8 +62,14 @@ export class CompanionService {
 
   getActive(): Companion { return COMPANIONS[this.activeId]; }
 
+  imageFor(state: NibState): string { const c = this.getActive(); return c.states?.[state] ?? c.image; }
+
   /** The voice preset id to speak with: user override first, else the companion's. */
-  getVoicePreset(): string { return this.voiceOverride ?? this.getActive().voicePreset; }
+  getVoicePreset(): string {
+    if (this.voiceOverride) return this.voiceOverride;
+    const def = this.getActive().voicePreset;
+    return this.isVoiceAvailable(def) ? def : 'narrator_warm';
+  }
 
   async setActive(id: string): Promise<Companion> {
     if (!COMPANIONS[id]) throw new Error(`Unknown companion: ${id}`);
@@ -65,8 +80,9 @@ export class CompanionService {
 
   /** Pass null to clear the override and return to the companion's default voice. */
   async setVoiceOverride(preset: string | null): Promise<void> {
-    const next = preset && preset.trim() ? preset.trim() : null;
-    if (next && !Object.keys(TTSService.VOICE_PRESETS).includes(next)) throw new Error('Unknown voice preset');
+    let next = preset && preset.trim() ? preset.trim() : null;
+    if (next && next.startsWith('edge:') && TTSService.VOICE_PRESETS[next.slice(5)]) next = next.slice(5);
+    if (next && !Object.keys(TTSService.VOICE_PRESETS).includes(next) && !(/^(kokoro|gemini):/.test(next) && isKnownVoice(next))) throw new Error('Unknown voice preset');
     this.voiceOverride = next;
     await this.persist();
   }

@@ -251,6 +251,8 @@ export function registerSystemRoutes(ctx: ApiContext): void {
         refreshedProviders = await services.aiRouter.reinitialize();
       }
 
+      if (key === 'gemini_api_key' || key === 'elevenlabs_api_key') await services.tts?.refreshKeyCache();
+
       res.json({ success: true, key, refreshedProviders, warning: formatCheck.warning });
     } catch (error) {
       res.status(500).json({ error: 'Failed to store key' });

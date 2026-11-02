@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  deleteVaultKey, getCompanion, getModels, getVaultKeys, getVoices, refreshProviders, saveVaultKey, setCompanion, setModel, speak,
-  type Companion, type VoicePreset,
+  deleteVaultKey, getModels, getVaultKeys, refreshProviders, saveVaultKey, setModel,
+  type Companion,
 } from '../lib/api';
-import { micSupported, playUrl } from '../lib/voice';
-import { CompanionPicker } from './CompanionPicker';
+import { micSupported } from '../lib/voice';
+import { LookPicker } from './LookPicker';
+import { VoiceSection } from './VoiceSection';
 
 const SLOTS = [
   { key: 'gemini_api_key', label: 'Google Gemini', free: true, hint: 'Free tier; powers chat, memory, and voice notes', url: 'https://aistudio.google.com/app/apikey' },
@@ -13,7 +14,7 @@ const SLOTS = [
   { key: 'openai_api_key', label: 'OpenAI', free: false, hint: 'Premium', url: 'https://platform.openai.com/api-keys' },
   { key: 'anthropic_api_key', label: 'Anthropic Claude', free: false, hint: 'Premium editing and judging', url: 'https://console.anthropic.com/' },
   { key: 'elevenlabs_api_key', label: 'ElevenLabs', free: false, hint: 'Audiobook-grade voices (Edge voices are free and built in)', url: 'https://elevenlabs.io/' },
-  { key: 'telegram_bot_token', label: 'Telegram bot', free: true, hint: 'Talk to your companion from your phone', url: 'https://core.telegram.org/bots#botfather' },
+  { key: 'telegram_bot_token', label: 'Telegram bot', free: true, hint: 'Talk to Fibb from your phone', url: 'https://core.telegram.org/bots#botfather' },
 ];
 
 interface ModelInfo { id: string; available: boolean; currentModel: string; tier: string; knownModels: string[] }
@@ -62,37 +63,15 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [online, setOnline] = useState<string[] | null>(null);
   const [testing, setTesting] = useState(false);
-  const [voices, setVoices] = useState<VoicePreset[]>([]);
-  const [chosen, setChosen] = useState<string | undefined>(companion?.voicePreset);
-  const [previewing, setPreviewing] = useState('');
   const [error, setError] = useState('');
 
   const reload = useCallback(() => {
     getVaultKeys().then(setKeys).catch(() => {});
     getModels().then(m => setModels(m as ModelInfo[])).catch(() => {});
   }, []);
-  useEffect(() => { reload(); getVoices().then(r => setVoices(r.presets)).catch(() => {}); }, [reload]);
-  useEffect(() => { setChosen(companion?.voicePreset); }, [companion?.voicePreset]);
+  useEffect(() => { reload(); }, [reload]);
 
-  const name = companion?.name ?? 'Fibb';
   const ollama = models.find(m => m.id === 'ollama');
-  const preview = async (id: string) => {
-    setPreviewing(id); setError('');
-    try {
-      const u = await speak(`Hi, I'm ${name}. Let's write something today.`, id);
-      if (u) await playUrl(u); else setError('Preview unavailable');
-    } catch (e: any) { setError(e?.message || 'Preview failed'); }
-    finally { setPreviewing(''); }
-  };
-  const pickVoice = async (id: string | null) => {
-    setError('');
-    try {
-      const r = await setCompanion({ voicePreset: id });
-      if (r) setChosen(r.voicePreset); else setError('Could not change voice');
-    } catch (e: any) { setError(e?.message || 'Could not change voice'); }
-    onCompanionChanged();
-  };
-  const refreshCompanion = async () => { const c = await getCompanion(); if (c) setChosen(c.voicePreset); onCompanionChanged(); };
 
   return (
     <div className="thread"><div className="thread-inner settings">
@@ -139,34 +118,18 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
         </section>
       )}
 
+      <VoiceSection voicePreset={companion?.voicePreset} onChanged={onCompanionChanged} />
+
       <section className="card">
-        <div className="t">Voice</div>
-        <div className="s">How {name} sounds when reading aloud.</div>
-        {(['Female', 'Male'] as const).map(g => {
-          const group = voices.filter(v => v.gender === g);
-          if (!group.length) return null;
-          return (
-            <fieldset className="voices" key={g}>
-              <legend>{g}</legend>
-              {group.map(v => (
-                <div className="voicerow" key={v.id}>
-                  <label>
-                    <input type="radio" name="voice" checked={chosen === v.id} onChange={() => pickVoice(v.id)} />
-                    <span><b>{v.id}</b> <span className="s">{v.description}</span></span>
-                  </label>
-                  <button className="btn" disabled={!!previewing} onClick={() => preview(v.id)}>{previewing === v.id ? 'Playing…' : 'Preview'}</button>
-                </div>
-              ))}
-            </fieldset>
-          );
-        })}
-        <div className="act"><button className="btn" onClick={() => pickVoice(null)}>Use companion default</button></div>
+        <div className="t">Appearance</div>
+        <div className="s">Fibb is always Fibb. Pick the look you like.</div>
+        <LookPicker onPicked={onCompanionChanged} />
       </section>
 
       <section className="card">
-        <div className="t">Companion</div>
-        <div className="s">Pick who you write with. Their name, look, and default voice change; your book and memory stay the same.</div>
-        <CompanionPicker onPicked={refreshCompanion} />
+        <div className="t">Advanced</div>
+        <div className="s"><a href="/legacy/">Previous dashboard</a></div>
+        <div className="s">Voice notes without a browser microphone use a local Whisper binary: set <code>AUTHORAGENT_WHISPER_PATH</code> in the environment before starting Fibb.</div>
       </section>
     </div></div>
   );

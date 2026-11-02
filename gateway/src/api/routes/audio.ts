@@ -8,6 +8,7 @@ import type { ApiContext } from '../context.js';
 import path from 'path';
 import multer from 'multer';
 import { safePath } from '../context.js';
+import { isKnownVoice, parseVoiceId } from '../../services/tts-catalog.js';
 
 // Dedicated memory-storage uploader for audio clips: the shared manuscript
 // `upload` rejects non-.txt/.md/.docx names. 10 MB cap, no extension filter.
@@ -28,7 +29,7 @@ export function registerAudioRoutes(ctx: ApiContext): void {
     explicitVoice?: string;
     personaId?: string;
     projectId?: string;
-  }): Promise<{ voice?: string; provider?: 'edge' | 'elevenlabs' }> {
+  }): Promise<{ voice?: string; provider?: 'edge' | 'kokoro' | 'gemini' | 'elevenlabs' }> {
     if (opts.explicitVoice) return { voice: opts.explicitVoice };
     // Try project's linked persona
     if (opts.projectId && services.projects) {
@@ -100,29 +101,41 @@ export function registerAudioRoutes(ctx: ApiContext): void {
     }
   });
 
-  // List available voices from all configured providers.
-  // Returns Edge presets always; adds ElevenLabs voices when an API key is configured.
+  // Namespaced voice catalog across providers (edge, kokoro, gemini, elevenlabs).
   app.get('/api/audio/voices', async (_req: Request, res: Response) => {
     if (!services.tts) return res.status(503).json({ error: 'TTS service not initialized' });
-    const presets = services.tts.listPresets();
     let elevenLabs: any[] = [];
-    try {
-      elevenLabs = await services.tts.listElevenLabsVoices();
-    } catch { /* non-fatal — feature is optional */ }
+    try { elevenLabs = await services.tts.listElevenLabsVoices(); } catch { /* optional */ }
+    const activeVoice = services.tts.getActiveVoice();
     res.json({
-      activeProvider: services.tts.getActiveProvider(),
-      activeVoice: services.tts.getActiveVoice(),
-      presets,
+      activeVoice,
+      catalog: await services.tts.listCatalog(),
+      kokoro: services.tts.kokoroStatus(),
+      // Compat-only fields for the pre-catalog app; remove once the UI reads `catalog`.
+      presets: services.tts.listPresets(),
       elevenLabs,
+      activeProvider: parseVoiceId(activeVoice).provider,
     });
+  });
+
+  app.post('/api/audio/kokoro/install', (_req: Request, res: Response) => {
+    if (!services.tts) return res.status(503).json({ error: 'TTS service not initialized' });
+    res.json(services.tts.installKokoro());
+  });
+  app.get('/api/audio/kokoro/status', (_req: Request, res: Response) => {
+    if (!services.tts) return res.status(503).json({ error: 'TTS service not initialized' });
+    res.json(services.tts.kokoroStatus());
   });
 
   // Set the global default TTS provider/voice.
   app.post('/api/audio/config', async (req: Request, res: Response) => {
     if (!services.tts) return res.status(503).json({ error: 'TTS service not initialized' });
     const { voice, provider } = req.body || {};
-    if (voice) await services.tts.setVoice(voice);
-    if (provider === 'edge' || provider === 'elevenlabs') {
+    if (voice) {
+      if (typeof voice !== 'string' || !isKnownVoice(voice)) return res.status(400).json({ error: 'Unknown voice' });
+      await services.tts.setVoice(voice);
+    }
+    if (provider === 'edge' || provider === 'kokoro' || provider === 'gemini' || provider === 'elevenlabs') {
       await services.tts.setProvider(provider);
     }
     res.json({
@@ -159,17 +172,6 @@ export function registerAudioRoutes(ctx: ApiContext): void {
     createReadStream(filePath).pipe(res);
   });
 
-  // List available voice presets
-  app.get('/api/audio/voices', async (_req: Request, res: Response) => {
-    const { TTSService } = await import('../../services/tts.js');
-    const activeVoice = services.tts?.getActiveVoice() || 'en-US-AriaNeural';
-    res.json({
-      available: true,
-      activeVoice,
-      presets: TTSService.VOICE_PRESETS,
-    });
-  });
-
   // Get/set the active voice
   app.get('/api/audio/voice', async (_req: Request, res: Response) => {
     res.json({ voice: services.tts?.getActiveVoice() || 'en-US-AriaNeural' });
@@ -183,6 +185,7 @@ export function registerAudioRoutes(ctx: ApiContext): void {
     if (!services.tts) {
       return res.status(503).json({ error: 'TTS service not initialized' });
     }
+    if (!isKnownVoice(voice)) return res.status(400).json({ error: 'Unknown voice' });
     // Resolve preset name to voice ID before saving
     const resolvedVoice = services.tts.resolveVoice(voice);
     await services.tts.setVoice(resolvedVoice);

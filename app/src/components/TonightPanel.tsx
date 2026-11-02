@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getFacts, getWritingStats, type Companion, type Facts, type WritingStats } from '../lib/api';
-import { MascotAvatar } from './MascotAvatar';
 
-export type MascotState = 'idle' | 'thinking' | 'listening';
-
-export function TonightBody({ refreshKey, companion, state }: { refreshKey: number; companion: Companion | null; state: MascotState }) {
+export function TonightBody({ refreshKey, companion }: { refreshKey: number; companion: Companion | null }) {
   const who = companion?.name ?? 'Fibb';
   const [facts, setFacts] = useState<Facts | null>(null);
   const [stats, setStats] = useState<WritingStats>({});
@@ -16,7 +13,6 @@ export function TonightBody({ refreshKey, companion, state }: { refreshKey: numb
 
   return (
     <>
-      <MascotAvatar c={companion} state={state} />
       <div>
         <div className="streak"><span className="n">{streak}</span><span className="l">day streak · {words.toLocaleString()} words</span></div>
         {book?.goal && (<>
@@ -40,8 +36,4 @@ export function TonightBody({ refreshKey, companion, state }: { refreshKey: numb
       </div>
     </>
   );
-}
-
-export function TonightPanel(props: { refreshKey: number; companion: Companion | null; state: MascotState }) {
-  return <aside className="side" aria-label="Tonight"><TonightBody {...props} /></aside>;
 }

@@ -1,4 +1,5 @@
 import type { JSX } from 'react';
+import type { Companion } from '../lib/api';
 export type View = 'chat' | 'books' | 'ideas' | 'review' | 'settings';
 
 const icons: Record<View, JSX.Element> = {
@@ -10,10 +11,10 @@ const icons: Record<View, JSX.Element> = {
 };
 const labels: Record<View, string> = { chat: 'Chat', books: 'Books', ideas: 'Ideas', review: 'Review', settings: 'Settings' };
 
-export function Rail({ view, onChange }: { view: View; onChange: (v: View) => void }) {
+export function Rail({ view, onChange, companion }: { view: View; onChange: (v: View) => void; companion?: Companion | null }) {
   return (
     <nav className="rail" aria-label="Main">
-      <div className="logo" aria-hidden />
+      <img className="logo" src={companion?.states?.idle ?? companion?.image ?? "/mascots/nib/nib-idle.svg"} alt="" aria-hidden draggable={false} />
       {(Object.keys(icons) as View[]).map(v => (
         <button key={v} className={`nav${view === v ? ' on' : ''}`} onClick={() => onChange(v)} aria-label={labels[v]} aria-current={view === v ? 'page' : undefined}>
           {icons[v]}<span className="label">{labels[v]}</span>

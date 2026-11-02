@@ -805,6 +805,12 @@ ${text}`;
       const { basename } = await import('path');
       const audioData = readFileSync(filePath);
       const filename = basename(filePath);
+      const ext = filename.split('.').pop()?.toLowerCase();
+      const contentType = ext === 'wav' ? 'audio/wav' : ext === 'ogg' ? 'audio/ogg' : 'audio/mpeg';
+      // Telegram sendVoice rejects WAV; deliver it as a document instead.
+      const asDocument = ext === 'wav';
+      const field = asDocument ? 'document' : 'voice';
+      const endpoint = asDocument ? 'sendDocument' : 'sendVoice';
 
       // Build multipart form data manually (no external dependency)
       const boundary = '----FibbVoice' + Date.now();
@@ -824,14 +830,14 @@ ${text}`;
 
       // audio file field
       parts.push(Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="voice"; filename="${filename}"\r\nContent-Type: audio/mpeg\r\n\r\n`
+        `--${boundary}\r\nContent-Disposition: form-data; name="${field}"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`
       ));
       parts.push(audioData);
       parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
 
       const body = Buffer.concat(parts);
 
-      const response = await fetch(`https://api.telegram.org/bot${this.token}/sendVoice`, {
+      const response = await fetch(`https://api.telegram.org/bot${this.token}/${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': `multipart/form-data; boundary=${boundary}`,
@@ -842,6 +848,7 @@ ${text}`;
 
       if (!response.ok) {
         console.error('Telegram sendVoice failed:', await response.text());
+        logger.warn(`telegram voice send failed (HTTP ${response.status})`);
         return false;
       }
       return true;
@@ -874,7 +881,8 @@ ${text}`;
       const ttsData = await ttsRes.json() as any;
 
       if (ttsData.success && ttsData.file) {
-        await this.sendVoice(chatId, ttsData.file);
+        const ok = await this.sendVoice(chatId, ttsData.file);
+        if (!ok) logger.warn('telegram voice send failed');
       }
     } catch (e) {
       // Voice generation failure is non-critical — don't spam the user

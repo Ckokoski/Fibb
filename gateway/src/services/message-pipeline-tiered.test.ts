@@ -128,7 +128,7 @@ function makeDeps(opts: {
     },
     chatHistory: { load: async () => [], save: async () => {} },
     facts: { render: () => '', extractFromTurn: async () => {} },
-    companion: { getActive: () => ({ id: 'nib', name: 'Nib', voicePreset: 'narrator_warm', tagline: 't', image: '/mascots/nib.webp' }), getVoicePreset: () => 'narrator_warm' },
+    companion: { getActive: () => ({ id: 'nib', look: 'nib', name: 'Fibb', voicePreset: 'narrator_warm', tagline: 't', image: '/mascots/nib.webp' }), getVoicePreset: () => 'narrator_warm' },
     soul: { getFullContext: () => 'SOUL_IDENTITY_TEXT', getFullContextFor: () => 'SOUL_IDENTITY_TEXT' },
     memory: {
       getRelevant: async () => 'BOOK_BIBLE_MEMORY',

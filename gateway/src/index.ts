@@ -477,6 +477,7 @@ class FibbGateway {
     await this.facts.initialize();
     this.companion = new CompanionService(join(ROOT_DIR, 'workspace'));
     await this.companion.initialize();
+    this.companion.isVoiceAvailable = (id) => this.tts?.isVoiceReadySync(id) ?? true;
     this.transcribe = new TranscribeService(this.vault, {
       geminiModel: () => this.aiRouter.getProviderModelInfo().find(p => p.id === 'gemini')?.currentModel ?? 'gemini-2.0-flash',
     });

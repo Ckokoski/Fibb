@@ -13,8 +13,21 @@ describe('CompanionService', () => {
   it('ships six companions with nib as the default', () => {
     expect(Object.keys(COMPANIONS)).toEqual(['nib', 'fable', 'folio', 'mote', 'quill', 'pip']);
     expect(svc.getActive().id).toBe('nib');
-    expect(svc.getActive().name).toBe('Nib');
-    expect(svc.getActive().voicePreset).toBe('narrator_warm');
+    expect(svc.getActive().name).toBe('Fibb');
+    expect(svc.getActive().look).toBe('nib');
+    expect(svc.getActive().voicePreset).toBe('kokoro:af_heart');
+    svc.isVoiceAvailable = () => false;
+    expect(svc.getVoicePreset()).toBe('narrator_warm');
+    svc.isVoiceAvailable = () => true;
+    expect(svc.getVoicePreset()).toBe('kokoro:af_heart');
+  });
+  it('every look is Fibb; only nib has states; imageFor picks a state image', async () => {
+    for (const c of Object.values(COMPANIONS)) { expect(c.name).toBe('Fibb'); expect(c.look).toBe(c.id); }
+    expect(COMPANIONS.nib.states).toEqual({ idle: '/mascots/nib/nib-idle.svg', thinking: '/mascots/nib/nib-thinking.svg', listening: '/mascots/nib/nib-listening.svg', celebrating: '/mascots/nib/nib-celebrating.svg' });
+    for (const id of ['fable', 'folio', 'mote', 'quill', 'pip']) expect(COMPANIONS[id].states).toBeUndefined();
+    expect(svc.imageFor('thinking')).toBe('/mascots/nib/nib-thinking.svg');
+    await svc.setActive('quill');
+    expect(svc.imageFor('thinking')).toBe(COMPANIONS.quill.image);
   });
   it('persists the selection and rejects unknown ids', async () => {
     await svc.setActive('quill');
@@ -27,6 +40,12 @@ describe('CompanionService', () => {
     await expect(svc.setVoiceOverride('nope_voice')).rejects.toThrow(/unknown voice preset/i);
     await svc.setVoiceOverride('narrator_warm');
     await svc.setVoiceOverride(null);
+  });
+  it('accepts edge:<preset> ids by normalizing to the preset key', async () => {
+    await svc.setVoiceOverride('edge:narrator_male');
+    svc.isVoiceAvailable = () => true;
+    expect(svc.getVoicePreset()).toBe('narrator_male');
+    await expect(svc.setVoiceOverride('edge:nope')).rejects.toThrow(/unknown voice preset/i);
   });
   it('falls back to nib when the saved file is corrupt', async () => {
     const { mkdirSync, writeFileSync } = await import('fs');
