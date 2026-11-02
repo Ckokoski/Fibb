@@ -10,21 +10,26 @@ import { join } from 'path';
 import { logger } from './logger.js';
 import { TTSService } from './tts.js';
 
+export type NibState = 'idle' | 'thinking' | 'listening' | 'celebrating';
+
 export interface Companion {
   id: string;
-  name: string;
+  look: string;          // the look's id; the character is always Fibb
+  name: 'Fibb';
   voicePreset: string;   // key of TTSService.VOICE_PRESETS
   tagline: string;
   image: string;         // public path served by the app
+  states?: Record<NibState, string>;
 }
 
 export const COMPANIONS: Record<string, Companion> = {
-  nib:   { id: 'nib',   name: 'Nib',   voicePreset: 'narrator_warm',  tagline: 'the ink drop who never forgets a thread', image: '/mascots/nib.webp' },
-  fable: { id: 'fable', name: 'Fable', voicePreset: 'storyteller',    tagline: 'a small dragon who guards your book',      image: '/mascots/fable.webp' },
-  folio: { id: 'folio', name: 'Folio', voicePreset: 'british_female', tagline: 'pages for ears, tidy to a fault',          image: '/mascots/folio.webp' },
-  mote:  { id: 'mote',  name: 'Mote',  voicePreset: 'curious_kid',    tagline: 'a moth drawn to a bright idea',            image: '/mascots/mote.webp' },
-  quill: { id: 'quill', name: 'Quill', voicePreset: 'british_male',   tagline: 'a hedgehog made of pens',                  image: '/mascots/quill.webp' },
-  pip:   { id: 'pip',   name: 'Pip',   voicePreset: 'narrator_female', tagline: 'the sprout, small and relentless',         image: '/mascots/pip.webp' },
+  nib:   { id: 'nib',   look: 'nib', name: 'Fibb',   voicePreset: 'narrator_warm',  tagline: 'the ink drop who never forgets a thread', image: '/mascots/nib.webp',
+          states: { idle: '/mascots/nib/nib-idle.svg', thinking: '/mascots/nib/nib-thinking.svg', listening: '/mascots/nib/nib-listening.svg', celebrating: '/mascots/nib/nib-celebrating.svg' } },
+  fable: { id: 'fable', look: 'fable', name: 'Fibb', voicePreset: 'storyteller',    tagline: 'a small dragon who guards your book',      image: '/mascots/fable.webp' },
+  folio: { id: 'folio', look: 'folio', name: 'Fibb', voicePreset: 'british_female', tagline: 'pages for ears, tidy to a fault',          image: '/mascots/folio.webp' },
+  mote:  { id: 'mote',  look: 'mote', name: 'Fibb',  voicePreset: 'curious_kid',    tagline: 'a moth drawn to a bright idea',            image: '/mascots/mote.webp' },
+  quill: { id: 'quill', look: 'quill', name: 'Fibb', voicePreset: 'british_male',   tagline: 'a hedgehog made of pens',                  image: '/mascots/quill.webp' },
+  pip:   { id: 'pip',   look: 'pip', name: 'Fibb',   voicePreset: 'narrator_female', tagline: 'the sprout, small and relentless',         image: '/mascots/pip.webp' },
 };
 
 export const DEFAULT_COMPANION_ID = 'nib';
@@ -52,6 +57,8 @@ export class CompanionService {
   list(): Companion[] { return Object.values(COMPANIONS); }
 
   getActive(): Companion { return COMPANIONS[this.activeId]; }
+
+  imageFor(state: NibState): string { const c = this.getActive(); return c.states?.[state] ?? c.image; }
 
   /** The voice preset id to speak with: user override first, else the companion's. */
   getVoicePreset(): string { return this.voiceOverride ?? this.getActive().voicePreset; }

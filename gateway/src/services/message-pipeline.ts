@@ -211,7 +211,7 @@ export class MessagePipeline {
     }
 
     // ── Build context ──
-    const soul = this.deps.soul.getFullContextFor(this.deps.companion.getActive().name);
+    const soul = this.deps.soul.getFullContextFor('Fibb');
     const memories = await this.deps.memory.getRelevant(content);
     const activeProject = await this.deps.memory.getActiveProject();
     const skills = this.deps.skills.matchSkills(content);
