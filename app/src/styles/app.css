@@ -87,8 +87,6 @@ textarea { font: inherit; }
   .nav .label { display: none; }
   .topbar { padding: 0 16px; }
   .thread { padding: 8px 16px 6px; }
-  .hero { padding: 12px 0 0; }
-  .hero-img-wrap { width: 64px; height: 64px; }
   .chips { padding: 6px 16px 8px; }
   .composer { margin: 0 16px 10px; width: calc(100% - 32px); position: sticky; bottom: 0; }
 }
@@ -152,7 +150,7 @@ textarea { font: inherit; }
 
 /* Hero */
 .hero { display: flex; flex-direction: column; align-items: center; padding: 28px 0 8px; flex: 0 0 auto; }
-.hero-img-wrap { position: relative; width: 120px; height: 120px; transition: width .2s, height .2s; }
+.hero-img-wrap { position: relative; width: 120px; height: 120px; }
 .hero.compact { padding: 8px 0 0; }
 .hero.compact .hero-img-wrap { width: 56px; height: 56px; }
 .hero-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity .2s ease-out, transform .2s ease-out; }
@@ -185,7 +183,8 @@ textarea { font: inherit; }
 .provs { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 14px; }
 .prov { background: var(--surface-2); border-radius: var(--radius); padding: 12px; display: flex; flex-direction: column; gap: 8px; border: 1px solid transparent; transition: border-color .18s; }
 .prov.on { border-color: var(--amber); }
-.prov.off { opacity: .6; }
+.prov.off .prov-main, .prov.off .prov-main b { color: var(--text-3); }
+.prov.off .prov-main .s { color: var(--text-3); }
 .prov-main { text-align: left; display: flex; flex-direction: column; gap: 2px; }
 .prov-main:disabled { cursor: not-allowed; }
 .prov .hint, .prov .ok { font-size: 12px; color: var(--text-3); }
@@ -200,7 +199,6 @@ textarea { font: inherit; }
 :root[data-theme="light"] .msg.fibb .b { border-left-color: rgba(154,95,12,.35); }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]):not([data-theme="light"]) .msg.fibb .b { border-left-color: rgba(154,95,12,.35); } }
 @media (max-width: 900px) {
-  .hero { padding: 12px 0 0; }
-  .hero-img-wrap, .hero.compact .hero-img-wrap { width: 64px; height: 64px; }
-  .hero.compact { padding: 12px 0 0; }
+  .main .hero, .main .hero.compact { padding: 12px 0 0; }
+  .main .hero-img-wrap, .main .hero.compact .hero-img-wrap { width: 64px; height: 64px; }
 }

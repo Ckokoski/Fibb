@@ -26,9 +26,9 @@ function load(): ChatMessage[] {
   return [{ id: 'greet', role: 'assistant', content: GREETING }];
 }
 
-export function ChatView({ onTurn, active, companionName, readAloud, handsFree, voicePreset, onBusy, onListening, onCelebrate, onOpenTonight }: {
+export function ChatView({ onTurn, active, companionName, readAloud, handsFree, voicePreset, onBusy, onSpeaking, onListening, onCelebrate, onOpenTonight }: {
   onTurn: () => void; active: boolean; companionName: string; readAloud: boolean; handsFree: boolean; voicePreset?: string;
-  onBusy: (b: boolean) => void; onListening: (b: boolean) => void; onCelebrate: () => void; onOpenTonight: () => void;
+  onBusy: (b: boolean) => void; onSpeaking: (b: boolean) => void; onListening: (b: boolean) => void; onCelebrate: () => void; onOpenTonight: () => void;
 }) {
   const [msgs, setMsgs] = useState<ChatMessage[]>(load);
   const [busy, setBusy] = useState(false);
@@ -49,7 +49,8 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs.length, lastLen, busy]);
   useEffect(() => { if (active) endRef.current?.scrollIntoView(); }, [active]);
   useEffect(() => { onListening(listening); }, [listening, onListening]);
-  useEffect(() => { onBusy(busy || speaking); }, [busy, speaking, onBusy]);
+  useEffect(() => { onBusy(busy); }, [busy, onBusy]);
+  useEffect(() => { onSpeaking(speaking); }, [speaking, onSpeaking]);
   useEffect(() => () => { listenerRef.current?.stop(); stopPlayback(); }, []);
 
   const toggleMic = () => {

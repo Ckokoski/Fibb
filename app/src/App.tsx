@@ -40,6 +40,7 @@ export function App() {
   const [companion, setCompanionState] = useState<Companion | null>(null);
   const [voice, setVoice] = useState(loadVoice);
   const [busy, setBusy] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const [listening, setListening] = useState(false);
   const [tonight, setTonight] = useState(false);
   const [celebrateUntil, setCelebrateUntil] = useState(0);
@@ -79,7 +80,7 @@ export function App() {
 
   const book = facts?.books?.[0];
   const line2 = book ? `${book.title}${book.chapter ? ` · ch. ${book.chapter}` : ''}` : undefined;
-  const mascotState: MascotStateName = listening ? 'listening' : busy ? 'thinking' : celebrateUntil > Date.now() ? 'celebrating' : 'idle';
+  const mascotState: MascotStateName | 'speaking' = listening ? 'listening' : busy ? 'thinking' : speaking ? 'speaking' : celebrateUntil > Date.now() ? 'celebrating' : 'idle';
   const themeIcon = theme === 'dark' ? Icons.moon : theme === 'light' ? Icons.sun : Icons.auto;
 
   return (
@@ -101,7 +102,7 @@ export function App() {
           <div className="view" hidden={view !== 'chat'}>
             <ChatView active={view === 'chat'} onTurn={() => setTurn(t => t + 1)} companionName="Fibb"
               readAloud={voice.readAloud} handsFree={voice.handsFree} voicePreset={companion?.voicePreset}
-              onBusy={setBusy} onListening={setListening} onCelebrate={celebrate} onOpenTonight={() => setTonight(true)} />
+              onBusy={setBusy} onSpeaking={setSpeaking} onListening={setListening} onCelebrate={celebrate} onOpenTonight={() => setTonight(true)} />
           </div>
           {view === 'settings' && <SettingsView companion={companion} onCompanionChanged={loadCompanion} />}
           {view === 'books' && <EmptyState title="No books yet" text="Tell Fibb what you're writing and it will keep the bible, the chapters, and the goal here." action="Start in chat" onAction={() => setView('chat')} />}

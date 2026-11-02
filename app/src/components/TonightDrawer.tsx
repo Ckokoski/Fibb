@@ -11,7 +11,14 @@ export function TonightDrawer({ open, onClose, refreshKey, companion }: { open: 
   useEffect(() => {
     if (!open) return;
     const trigger = document.activeElement as HTMLElement | null;
-    head.current?.focus();
+    const focusHead = () => head.current?.focus({ preventScroll: true });
+    let r2 = 0;
+    const r1 = requestAnimationFrame(() => { r2 = requestAnimationFrame(focusHead); });
+    const backstop = () => { if (!panel.current?.contains(document.activeElement)) focusHead(); };
+    const el = panel.current;
+    el?.addEventListener('transitionend', backstop);
+    const main = document.querySelector('.main');
+    main?.setAttribute('inert', '');
     const h = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { closeRef.current(); return; }
       if (e.key !== 'Tab' || !panel.current) return;
@@ -22,7 +29,12 @@ export function TonightDrawer({ open, onClose, refreshKey, companion }: { open: 
       else if (!e.shiftKey && (cur === last || !panel.current.contains(cur))) { e.preventDefault(); first.focus(); }
     };
     window.addEventListener('keydown', h);
-    return () => { window.removeEventListener('keydown', h); trigger?.focus?.(); };
+    return () => {
+      cancelAnimationFrame(r1); cancelAnimationFrame(r2);
+      el?.removeEventListener('transitionend', backstop);
+      main?.removeAttribute('inert');
+      window.removeEventListener('keydown', h); trigger?.focus?.();
+    };
   }, [open]);
   return (
     <>

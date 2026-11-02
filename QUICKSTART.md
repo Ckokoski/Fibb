@@ -26,6 +26,9 @@ Docker is only for always-on VPS deployments (see SECURITY.md); you never need i
 ## Voice
 
 - Edge voices (spoken replies) need no key.
+- Kokoro voices run locally and are free. Settings > Voice downloads the model once (~90 MB) into `workspace/.models`; after that it loads automatically at startup.
+- Gemini voices need a Gemini key (Settings > Connections). If Gemini is unavailable, Fibb falls back to Kokoro, then Edge.
+- Telegram delivers Kokoro and Gemini audio as a file attachment (WAV), not a playable voice note; Edge replies stay voice notes.
 - The mic uses your browser's speech recognition where available. Otherwise it uploads audio to `/api/audio/transcribe`, which needs a Gemini key or `AUTHORAGENT_WHISPER_PATH` (plus optional `AUTHORAGENT_WHISPER_MODEL`).
 - Telegram voice notes need the same transcription setup.
 

@@ -34,7 +34,8 @@ export function VoiceSection({ voicePreset, onChanged }: { voicePreset?: string;
   const poll = useCallback(() => {
     if (timer.current) window.clearInterval(timer.current);
     timer.current = window.setInterval(async () => {
-      const s = await kokoroStatus();
+      let s: KokoroStatus;
+      try { s = await kokoroStatus(); } catch { return; }
       setKokoro(s);
       if (s.status !== 'downloading') {
         if (timer.current) window.clearInterval(timer.current);
@@ -89,7 +90,7 @@ export function VoiceSection({ voicePreset, onChanged }: { voicePreset?: string;
       <div className="provs">
         {catalog.map(p => {
           const isKokoro = p.provider === 'kokoro';
-          const ready = isKokoro ? kokoro.status === 'ready' || p.available : p.available;
+          const ready = isKokoro ? kokoro.status === 'ready' || kokoro.status === 'cached' || p.available : p.available;
           const selectable = isKokoro || p.available;
           return (
             <div key={p.provider} className={`prov${open === p.provider ? ' on' : ''}${selectable ? '' : ' off'}`}>
@@ -106,7 +107,7 @@ export function VoiceSection({ voicePreset, onChanged }: { voicePreset?: string;
                 </div>
               )}
               {isKokoro && ready && <span className="s ok">Ready</span>}
-              {isKokoro && kokoro.status === 'error' && <div className="s" role="alert" style={{ color: 'var(--red)' }}>{kokoro.error || 'Download failed'}</div>}
+              {isKokoro && kokoro.status === 'error' && <div className="s" role="alert" title={kokoro.error || undefined} style={{ color: 'var(--red)' }}>Download failed. Check your connection and try again.</div>}
             </div>
           );
         })}
