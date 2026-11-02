@@ -41,6 +41,12 @@ describe('CompanionService', () => {
     await svc.setVoiceOverride('narrator_warm');
     await svc.setVoiceOverride(null);
   });
+  it('accepts edge:<preset> ids by normalizing to the preset key', async () => {
+    await svc.setVoiceOverride('edge:narrator_male');
+    svc.isVoiceAvailable = () => true;
+    expect(svc.getVoicePreset()).toBe('narrator_male');
+    await expect(svc.setVoiceOverride('edge:nope')).rejects.toThrow(/unknown voice preset/i);
+  });
   it('falls back to nib when the saved file is corrupt', async () => {
     const { mkdirSync, writeFileSync } = await import('fs');
     mkdirSync(join(dir, '.config'), { recursive: true });

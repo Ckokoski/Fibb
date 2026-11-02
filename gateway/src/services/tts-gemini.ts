@@ -10,9 +10,9 @@ export async function geminiSynthesize(apiKey: string, text: string, voice: stri
       generation_config: { speech_config: [{ voice }] },
     }),
   });
-  if (res.status === 429) throw Object.assign(new Error('Gemini TTS rate limit reached'), { code: 'RATE_LIMIT' });
-  if (res.status === 404) throw Object.assign(new Error('Gemini TTS model not found (HTTP 404)'), { code: 'NOT_FOUND' });
-  if (!res.ok) throw new Error(`Gemini TTS failed (HTTP ${res.status})`);
+  if (res.status === 429) throw Object.assign(new Error('Gemini TTS rate limit reached'), { code: 'RATE_LIMIT', status: 429 });
+  if (res.status === 404) throw Object.assign(new Error('Gemini TTS model not found (HTTP 404)'), { code: 'NOT_FOUND', status: 404 });
+  if (!res.ok) throw Object.assign(new Error(`Gemini TTS failed (HTTP ${res.status})`), { status: res.status });
   const data: any = await res.json();
   const steps: any[] = data?.steps || [];
   let b64: string | undefined;

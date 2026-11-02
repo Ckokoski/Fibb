@@ -80,7 +80,8 @@ export class CompanionService {
 
   /** Pass null to clear the override and return to the companion's default voice. */
   async setVoiceOverride(preset: string | null): Promise<void> {
-    const next = preset && preset.trim() ? preset.trim() : null;
+    let next = preset && preset.trim() ? preset.trim() : null;
+    if (next && next.startsWith('edge:') && TTSService.VOICE_PRESETS[next.slice(5)]) next = next.slice(5);
     if (next && !Object.keys(TTSService.VOICE_PRESETS).includes(next) && !(/^(kokoro|gemini):/.test(next) && isKnownVoice(next))) throw new Error('Unknown voice preset');
     this.voiceOverride = next;
     await this.persist();

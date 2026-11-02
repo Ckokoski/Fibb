@@ -158,6 +158,11 @@ export class TTSService {
     this.kokoro = new KokoroEngine(join(workspaceDir, '.models'));
   }
 
+  private kokoroUsable(): boolean {
+    const st = this.kokoro.getStatus().status;
+    return st === 'ready' || st === 'cached';
+  }
+
   kokoroStatus(): KokoroStatus { return this.kokoro.getStatus(); }
 
   /** Start (or join) the Kokoro model download/load; never throws. */
@@ -179,7 +184,7 @@ export class TTSService {
   isVoiceReadySync(id: string): boolean {
     const p = parseVoiceId(id);
     if (p.provider === 'edge') return true;
-    if (p.provider === 'kokoro') return this.kokoro.getStatus().status === 'ready';
+    if (p.provider === 'kokoro') return this.kokoroUsable();
     return this.keyPresent[p.provider];
   }
 
@@ -191,7 +196,7 @@ export class TTSService {
     }));
     return [
       { provider: 'edge', label: 'Edge (free)', available: true, voices: edgeVoices },
-      { provider: 'kokoro', label: 'Kokoro (local, free)', available: this.kokoro.getStatus().status === 'ready', status: this.kokoro.getStatus(), voices: KOKORO_VOICES },
+      { provider: 'kokoro', label: 'Kokoro (local, free)', available: this.kokoroUsable(), status: this.kokoro.getStatus(), voices: KOKORO_VOICES },
       { provider: 'gemini', label: 'Gemini', available: this.keyPresent.gemini, voices: GEMINI_VOICES },
       { provider: 'elevenlabs', label: 'ElevenLabs (paid)', available: this.keyPresent.elevenlabs, voices: [] },
     ];
@@ -207,6 +212,11 @@ export class TTSService {
     await mkdir(this.configDir, { recursive: true });
     await this.loadVoiceConfig();
     await this.refreshKeyCache();
+    try {
+      if (await this.kokoro.detectCached()) {
+        this.kokoro.load().catch(() => { /* status carries the error */ });
+      }
+    } catch { /* detection is best-effort */ }
   }
 
   // ── Voice Config Persistence ──
@@ -254,7 +264,7 @@ export class TTSService {
   /** Edge TTS is always available (only needs internet); ElevenLabs needs an API key. */
   isAvailable(provider: TTSProviderId = 'edge'): boolean {
     if (provider === 'edge') return true;
-    if (provider === 'kokoro') return this.kokoro.getStatus().status === 'ready';
+    if (provider === 'kokoro') return this.kokoroUsable();
     if (provider === 'gemini' || provider === 'elevenlabs') return !!this.vault; // can probe further at call time
     return false;
   }
@@ -339,10 +349,20 @@ export class TTSService {
     return this.generateEdge(text, this.resolveVoice('narrator_warm'), options);
   }
 
+  /** Shared fallback: Kokoro if ready, else Edge narrator_warm. Never throws into Kokoro->Kokoro loops. */
+  private async fallbackToDefault(text: string, reason: string, options: { rate?: string; pitch?: string; volume?: string }, allowKokoro = true): Promise<TTSResult> {
+    logger.warn(`TTS fallback: ${reason}`);
+    if (allowKokoro && this.kokoro.getStatus().status === 'ready') {
+      const r = await this.generateKokoro(text, 'af_heart', options);
+      return r;
+    }
+    return this.edgeFallback(text, options);
+  }
+
   private async generateKokoro(text: string, voice: string, options: { rate?: string; pitch?: string; volume?: string }): Promise<TTSResult> {
     if (this.kokoro.getStatus().status !== 'ready') {
-      this.installKokoro(); // warm it up for next time
-      return this.edgeFallback(text, options);
+      this.installKokoro(); // warm it up for next time (also loads a cached model)
+      if (this.kokoro.getStatus().status !== 'ready') return this.fallbackToDefault(text, 'Kokoro not ready', options, false);
     }
     try {
       const chunks = chunkSentences(text.substring(0, LOCAL_TEXT_CAP));
@@ -350,25 +370,23 @@ export class TTSService {
       const parts: Buffer[] = [];
       for (const c of chunks) parts.push(await this.kokoro.synthesize(c, voice));
       return await this.writeWav(concatWav(parts), text, 'kokoro');
-    } catch {
-      return this.edgeFallback(text, options);
+    } catch (e: any) {
+      return this.fallbackToDefault(text, `Kokoro synthesis failed (${e?.message ? 'error' : 'unknown'})`, options, false);
     }
   }
 
   private async generateGemini(text: string, voice: string, options: { rate?: string; pitch?: string; volume?: string }): Promise<TTSResult> {
     const apiKey = this.vault ? await this.vault.get('gemini_api_key') : null;
-    if (!apiKey) {
-      return { success: false, error: 'Gemini API key not found in vault. Add `gemini_api_key` in Settings → API Keys.', provider: 'gemini' };
-    }
+    if (!apiKey) return this.fallbackToDefault(text, 'Gemini key missing', options);
     const models = this.geminiModel ? [this.geminiModel] : GEMINI_MODELS;
     try {
       let lastErr: any;
       for (const model of models) {
         try {
           const buf = await geminiSynthesize(apiKey, text.substring(0, LOCAL_TEXT_CAP), voice, model);
+          if (buf.subarray(0, 4).toString('ascii') !== 'RIFF') return this.fallbackToDefault(text, 'Gemini returned non-WAV audio', options);
           if (this.geminiModel !== model) logger.info(`Gemini TTS using model ${model}`);
           this.geminiModel = model;
-          if (buf.subarray(0, 4).toString('ascii') !== 'RIFF') return { success: false, error: 'Gemini TTS returned non-WAV audio', provider: 'gemini' };
           return await this.writeWav(buf, text, 'gemini');
         } catch (e: any) {
           lastErr = e;
@@ -377,11 +395,8 @@ export class TTSService {
       }
       throw lastErr;
     } catch (e: any) {
-      if (e?.code === 'RATE_LIMIT' || e?.code === 'NOT_FOUND') {
-        if (this.kokoro.getStatus().status === 'ready') return this.generateKokoro(text, 'af_heart', options);
-        return this.edgeFallback(text, options);
-      }
-      return { success: false, error: String(e?.message || e), provider: 'gemini' };
+      const status = e?.status ?? (e?.code === 'RATE_LIMIT' ? 429 : e?.code === 'NOT_FOUND' ? 404 : undefined);
+      return this.fallbackToDefault(text, `Gemini TTS failed (${status ? `HTTP ${status}` : 'network error'})`, options);
     }
   }
 

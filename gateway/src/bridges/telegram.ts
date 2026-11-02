@@ -848,6 +848,7 @@ ${text}`;
 
       if (!response.ok) {
         console.error('Telegram sendVoice failed:', await response.text());
+        logger.warn(`telegram voice send failed (HTTP ${response.status})`);
         return false;
       }
       return true;
