@@ -1,5 +1,7 @@
 # Fibb
 
+> **Status: BETA, in active development.** Fibb is being rebuilt as a chat-first writing companion. Chat, memory, and streaming work today; voice, overnight tasks, and connectors are arriving phase by phase. Expect rough edges and breaking changes. For the finished pipeline dashboard, use the archived AuthorAgent 4.0 release linked below.
+
 **The AI writing partner for authors. Knows your book, works while you sleep, talks like a friend.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)

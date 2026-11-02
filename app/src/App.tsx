@@ -22,6 +22,7 @@ export function App() {
       <main className="main">
         <header className="topbar">
           <span className="title">Fibb</span>
+          <span className="pill" title="Fibb is in beta; expect rough edges">Beta</span>
           {book && <span className="ctx">· working on <b>{book.title}</b>{book.chapter ? ` · ch. ${book.chapter}` : ''}</span>}
           <div className="right">
             <button className="pill" onClick={() => setTheme(t => cycleTheme(t))} title="Theme">
