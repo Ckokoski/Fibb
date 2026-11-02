@@ -45,6 +45,7 @@ export function App() {
   const [celebrateUntil, setCelebrateUntil] = useState(0);
   const [, setTick] = useState(0);
   const lastStreak = useRef<number | null>(null);
+  const celebrateTimer = useRef<number | null>(null);
   const narrow = useNarrow();
   const micAvailable = micSupported();
 
@@ -57,8 +58,10 @@ export function App() {
   // Celebrate for 4 s. A re-render is scheduled at expiry so the state falls back to idle.
   const celebrate = useCallback(() => {
     setCelebrateUntil(Date.now() + CELEBRATE_MS);
-    window.setTimeout(() => setTick(t => t + 1), CELEBRATE_MS + 50);
+    if (celebrateTimer.current) window.clearTimeout(celebrateTimer.current);
+    celebrateTimer.current = window.setTimeout(() => setTick(t => t + 1), CELEBRATE_MS + 50);
   }, []);
+  useEffect(() => () => { if (celebrateTimer.current) window.clearTimeout(celebrateTimer.current); }, []);
 
   // A streak increase between stats polls triggers a celebration.
   useEffect(() => {

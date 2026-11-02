@@ -39,7 +39,7 @@ textarea { font: inherit; }
 .day { align-self: center; color: var(--text-3); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
 .msg { max-width: 100%; line-height: 1.6; font-size: 16px; white-space: pre-wrap; }
 .msg.fibb { align-self: flex-start; display: flex; gap: 12px; }
-.msg.fibb .b { background: none; border: 0; padding: 4px 0 4px 14px; border-left: 2px solid var(--amber-dim); }
+.msg.fibb .b { background: none; border: 0; padding: 4px 0 4px 14px; border-left: 2px solid rgba(232,163,61,.35); }
 .msg.me { align-self: flex-end; max-width: 85%; }
 .msg.me .b { background: var(--amber-dim); color: var(--text); border-radius: 18px 18px 4px 18px; padding: 10px 14px; font-size: 15px; }
 .msg.streaming .b::after { content: "▍"; color: var(--amber); animation: blink 1s steps(2) infinite; }
@@ -90,7 +90,7 @@ textarea { font: inherit; }
   .hero { padding: 12px 0 0; }
   .hero-img-wrap { width: 64px; height: 64px; }
   .chips { padding: 6px 16px 8px; }
-  .composer { margin: 0 16px calc(10px + env(safe-area-inset-bottom)); width: calc(100% - 32px); position: sticky; bottom: 0; }
+  .composer { margin: 0 16px 10px; width: calc(100% - 32px); position: sticky; bottom: 0; }
 }
 
 .view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
@@ -165,7 +165,7 @@ textarea { font: inherit; }
 .hero-line2 { font-size: 12px; color: var(--text-3); margin-top: 2px; }
 @media (prefers-reduced-motion: reduce) {
   .hero-img { transition: none; }
-  .hero .hero-img.on { animation: none; transform: none; }
+  .hero.thinking .hero-img.on, .hero.celebrating .hero-img.on, .hero.listening .hero-img.on { animation: none; transform: none; }
   .drawer, .drawer-scrim, .ibtn, .composer, .chip { transition: none; }
   .composer.listening, .cbtn.mic.on { animation: none; }
 }
@@ -196,3 +196,11 @@ textarea { font: inherit; }
 .on-badge { margin-left: 8px; color: var(--amber); border-color: var(--amber); }
 .voicerow { flex-wrap: wrap; }
 .settings a { color: var(--amber); }
+
+:root[data-theme="light"] .msg.fibb .b { border-left-color: rgba(154,95,12,.35); }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]):not([data-theme="light"]) .msg.fibb .b { border-left-color: rgba(154,95,12,.35); } }
+@media (max-width: 900px) {
+  .hero { padding: 12px 0 0; }
+  .hero-img-wrap, .hero.compact .hero-img-wrap { width: 64px; height: 64px; }
+  .hero.compact { padding: 12px 0 0; }
+}

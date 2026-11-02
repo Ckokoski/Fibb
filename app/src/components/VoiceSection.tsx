@@ -62,32 +62,38 @@ export function VoiceSection({ voicePreset, onChanged }: { voicePreset?: string;
   };
   const use = async (id: string) => {
     setNote(''); setBad(false);
-    const [a, b] = await Promise.all([setActiveVoice(id), setVoiceOverride(id)]);
-    if (a && b) { setActive(id); setNote("Fibb's voice updated"); } else { setBad(true); setNote('Could not change voice'); }
-    onChanged();
+    try {
+      const [a, b] = await Promise.all([setActiveVoice(id), setVoiceOverride(id)]);
+      if (a && b) { setActive(id); setNote("Fibb's voice updated"); } else { setBad(true); setNote('Could not change voice'); }
+    } catch (e: any) { setBad(true); setNote(e?.message || 'Could not change voice'); }
+    finally { onChanged(); }
   };
   const reset = async () => {
     setNote(''); setBad(false);
-    const r = await setVoiceOverride(null);
-    if (r) setNote('Back to the default voice'); else { setBad(true); setNote('Could not reset'); }
-    onChanged();
+    try {
+      const r = await setVoiceOverride(null);
+      if (r) setNote('Back to the default voice'); else { setBad(true); setNote('Could not reset'); }
+    } catch (e: any) { setBad(true); setNote(e?.message || 'Could not reset'); }
+    finally { onChanged(); }
   };
 
   const current = catalog.find(p => p.provider === open);
-  const current_id = voicePreset || activeVoice;
+  // Legacy preset ids (no provider prefix) are Edge presets.
+  const ns = (id: string) => (!id ? '' : id.includes(':') ? id : `edge:${id}`);
+  const current_id = ns(voicePreset || activeVoice);
 
   return (
     <section className="card">
       <div className="t">Voice</div>
       <div className="s">How Fibb sounds when reading aloud. Pick a provider, then a voice.</div>
-      <div className="provs" role="tablist" aria-label="Voice providers">
+      <div className="provs">
         {catalog.map(p => {
           const isKokoro = p.provider === 'kokoro';
           const ready = isKokoro ? kokoro.status === 'ready' || p.available : p.available;
           const selectable = isKokoro || p.available;
           return (
             <div key={p.provider} className={`prov${open === p.provider ? ' on' : ''}${selectable ? '' : ' off'}`}>
-              <button role="tab" aria-selected={open === p.provider} disabled={!selectable} onClick={() => setOpen(p.provider)} className="prov-main">
+              <button aria-pressed={open === p.provider} disabled={!selectable} onClick={() => setOpen(p.provider)} className="prov-main">
                 <b>{p.label}</b>
                 <span className="s">{BLURB[p.provider] ?? ''}</span>
               </button>
@@ -116,11 +122,11 @@ export function VoiceSection({ voicePreset, onChanged }: { voicePreset?: string;
               <div className="voicerow" key={v.id}>
                 <span>
                   <b>{v.label}</b> <span className="s">{[v.accent, v.note].filter(Boolean).join(' · ')}</span>
-                  {current_id === v.id && <span className="badge on-badge">Active</span>}
+                  {current_id === ns(v.id) && <span className="badge on-badge">Active</span>}
                 </span>
                 <span className="vact">
                   <button className="btn" disabled={!!previewing} onClick={() => preview(v.id)}>{previewing === v.id ? 'Playing…' : 'Preview'}</button>
-                  <button className="btn pri" disabled={current_id === v.id} onClick={() => use(v.id)}>Use as Fibb's voice</button>
+                  <button className="btn pri" disabled={current_id === ns(v.id)} onClick={() => use(v.id)}>Use as Fibb's voice</button>
                 </span>
               </div>
             ))}

@@ -8,7 +8,7 @@ import { FirstRunCard } from './FirstRunCard';
 const STORE = 'fibb_chat_webchat';
 const GREETING = "Hi, I'm Fibb. I keep your book straight, draft when you ask, and work on it while you sleep. What's your name, and what are you working on?";
 // Cheap heuristic: a reply that sounds like praise or a streak milestone makes the hero celebrate for a moment.
-const CELEBRATE_RE = /\b(congrat|well done|nice work|🎉|streak)\b/i;
+const CELEBRATE_RE = /(congrat|well done|nice work|🎉|\bstreak\b)/i;
 
 function load(): ChatMessage[] {
   try {
