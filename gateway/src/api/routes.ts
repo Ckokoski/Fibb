@@ -22,6 +22,7 @@ import { createApiContext } from './context.js';
 
 import { registerSystemRoutes } from './routes/system.js';
 import { registerChatStreamRoutes } from './routes/chat-stream.js';
+import { registerCompanionRoutes } from './routes/companion.js';
 import { registerProjectRoutes } from './routes/projects.js';
 import { registerDocumentRoutes } from './routes/documents.js';
 import { registerContextHeartbeatRoutes } from './routes/context-heartbeat.js';
@@ -51,6 +52,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   // like /api/personas/generate must be registered before /api/personas/:id).
   registerSystemRoutes(ctx);
   registerChatStreamRoutes(ctx);
+  registerCompanionRoutes(ctx);
   registerProjectRoutes(ctx);
   registerDocumentRoutes(ctx);
   registerContextHeartbeatRoutes(ctx);

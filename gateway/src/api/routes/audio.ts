@@ -64,7 +64,7 @@ export function registerAudioRoutes(ctx: ApiContext): void {
     });
 
     const result = await services.tts.generate(text, {
-      voice: resolved.voice,
+      voice: resolved.voice ?? services.companion?.getVoicePreset(),
       provider: provider || resolved.provider,
       rate, pitch, volume,
       elevenLabsModel,
