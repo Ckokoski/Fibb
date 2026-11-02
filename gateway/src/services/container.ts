@@ -53,6 +53,7 @@ import { PreferenceStore } from './preferences.js';
 import { ChatHistoryStore } from './chat-history.js';
 import { FactsStore } from './facts.js';
 import { CompanionService } from './companion.js';
+import { TranscribeService } from './transcribe.js';
 import { KDPExporter } from './kdp-exporter.js';
 import { BetaReaderService } from './beta-reader.js';
 import { DialogueAuditor } from './dialogue-auditor.js';
@@ -108,6 +109,7 @@ export interface GatewayServices {
   chatHistory: ChatHistoryStore;
   facts: FactsStore;
   companion: CompanionService;
+  transcribe: TranscribeService;
   kdpExporter: KDPExporter;
   betaReader: BetaReaderService;
   dialogueAuditor: DialogueAuditor;
@@ -176,6 +178,7 @@ export class ServiceContainer {
   chatHistory!: ChatHistoryStore;
   facts!: FactsStore;
   companion!: CompanionService;
+  transcribe!: TranscribeService;
   kdpExporter!: KDPExporter;
   betaReader!: BetaReaderService;
   dialogueAuditor!: DialogueAuditor;
@@ -232,6 +235,7 @@ export class ServiceContainer {
       chatHistory: this.chatHistory,
       facts: this.facts,
       companion: this.companion,
+      transcribe: this.transcribe,
       kdpExporter: this.kdpExporter,
       betaReader: this.betaReader,
       dialogueAuditor: this.dialogueAuditor,
