@@ -31,7 +31,7 @@ export function App() {
             <a className="pill" href="/legacy/" title="Previous dashboard">Legacy</a>
           </div>
         </header>
-        <div className="view" hidden={view !== 'chat'}><ChatView active={view === 'chat'} onTurn={() => setTurn(t => t + 1)} /></div>
+        <div className="view" hidden={view !== 'chat'}><ChatView active={view === 'chat'} onTurn={() => setTurn(t => t + 1)} companionName="Fibb" readAloud={false} handsFree={false} /></div>
         {view !== 'chat' && (
           <div className="thread"><div className="thread-inner">
             <div className="card"><div className="t">{view[0].toUpperCase() + view.slice(1)}</div>

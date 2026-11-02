@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { streamChat } from '../lib/api';
+import { streamChat, speak } from '../lib/api';
+import { startListening, stopPlayback, playUrl, micSupported, type Listener } from '../lib/voice';
 import { Message, type ChatMessage } from './Message';
 import { Composer } from './Composer';
 import { FirstRunCard } from './FirstRunCard';
 
 const STORE = 'fibb_chat_webchat';
-const GREETING = "Hi, I'm Fibb. I'm your writing partner: I keep your book straight, draft when you want me to, and work on it while you sleep. What's your name, and what are you working on?";
+const greeting = (name: string) => `Hi, I'm ${name}. I'm your writing partner inside Fibb: I keep your book straight, draft when you want me to, and work on it while you sleep. What's your name, and what are you working on?`;
 
 function load(): ChatMessage[] {
   try {
@@ -20,21 +21,40 @@ function load(): ChatMessage[] {
       }
     }
   } catch { /* ignore */ }
-  return [{ id: 'greet', role: 'assistant', content: GREETING }];
+  return [{ id: 'greet', role: 'assistant', content: greeting('Fibb') }];
 }
 
-export function ChatView({ onTurn, active }: { onTurn: () => void; active: boolean }) {
+export function ChatView({ onTurn, active, companionName, readAloud, handsFree, voicePreset }: {
+  onTurn: () => void; active: boolean; companionName: string; readAloud: boolean; handsFree: boolean; voicePreset?: string;
+}) {
   const [msgs, setMsgs] = useState<ChatMessage[]>(load);
   const [busy, setBusy] = useState(false);
   const [needsProvider, setNeedsProvider] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [interim, setInterim] = useState('');
+  const listenerRef = useRef<Listener | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { try { localStorage.setItem(STORE, JSON.stringify(msgs.slice(-200))); } catch { /* ignore */ } }, [msgs]);
   const lastLen = msgs[msgs.length - 1]?.content.length ?? 0;
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs.length, lastLen, busy]);
   useEffect(() => { if (active) endRef.current?.scrollIntoView(); }, [active]);
+  useEffect(() => () => { listenerRef.current?.stop(); stopPlayback(); }, []);
 
-  const send = async (text: string) => {
+  const toggleMic = () => {
+    // Use the ref (not `listening` state) so a call from a stale send() closure still toggles correctly.
+    if (listenerRef.current) { listenerRef.current.stop(); return; }
+    stopPlayback(); setListening(true); setInterim('');
+    listenerRef.current = startListening(
+      setInterim,
+      (final) => { setListening(false); setInterim(''); listenerRef.current = null; if (final.trim()) send(final.trim(), true); },
+      (msg) => { setListening(false); setInterim(''); listenerRef.current = null; setMsgs(m => [...m, { id: crypto.randomUUID(), role: 'assistant', content: `Mic problem: ${msg}` }]); },
+    );
+  };
+
+  const readOut = (t: string) => { speak(t, voicePreset).then(u => { if (u) void playUrl(u); }); };
+
+  const send = async (text: string, spoken = false) => {
     const uid = crypto.randomUUID();
     const aid = crypto.randomUUID();
     setMsgs(m => [...m, { id: uid, role: 'user', content: text }, { id: aid, role: 'assistant', content: '', streaming: true }]);
@@ -49,32 +69,39 @@ export function ChatView({ onTurn, active }: { onTurn: () => void; active: boole
           setMsgs(m => m.map(x => x.id === aid ? { ...x, content: ev.message, streaming: false } : x));
         }
       }
+      if ((readAloud || spoken) && acc) {
+        const url = await speak(acc, voicePreset);
+        if (url) { await playUrl(url); if (handsFree && spoken) toggleMic(); }
+      }
     } catch {
-      setMsgs(m => m.map(x => x.id === aid ? { ...x, content: x.content || 'Fibb could not reach the server. Is it running?', streaming: false } : x));
+      setMsgs(m => m.map(x => x.id === aid ? { ...x, content: x.content || `${companionName} could not reach the server. Is it running?`, streaming: false } : x));
     } finally {
       setBusy(false);
       onTurn();
     }
   };
 
+  const READ_BACK = 'Read that back to me';
   const chips = msgs.length <= 1
     ? ["I'm working on a novel", 'Help me find a premise', "What can you do?"]
-    : ['Check the last chapter', "What's on tonight?", 'Brainstorm a scene'];
+    : ['Check the last chapter', "What's on tonight?", 'Brainstorm a scene', READ_BACK];
+  const lastReply = [...msgs].reverse().find(m => m.role === 'assistant' && m.content && !m.streaming);
+  const onChip = (c: string) => { if (c === READ_BACK) { if (lastReply) readOut(lastReply.content); } else send(c); };
 
   return (
     <>
       <div className="thread">
         <div className="thread-inner">
           <div className="day">Today</div>
-          {msgs.map(m => <Message key={m.id} m={m} />)}
+          {msgs.map(m => <Message key={m.id} m={m.id === 'greet' ? { ...m, content: greeting(companionName) } : m} onRead={readOut} />)}
           {needsProvider && <FirstRunCard onDone={() => { setNeedsProvider(false); send('Thanks, you’re connected now. Say hi?'); }} />}
           <div ref={endRef} />
         </div>
       </div>
       <div className="chips">
-        {chips.map(c => <button key={c} className="chip" onClick={() => send(c)} disabled={busy}>{c}</button>)}
+        {chips.map(c => <button key={c} className="chip" onClick={() => onChip(c)} disabled={busy}>{c}</button>)}
       </div>
-      <Composer onSend={send} disabled={busy} />
+      <Composer onSend={t => send(t)} disabled={busy} listening={listening} interim={interim} onMic={toggleMic} micAvailable={micSupported()} />
     </>
   );
 }

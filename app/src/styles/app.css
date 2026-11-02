@@ -62,7 +62,6 @@ textarea { font: inherit; }
 .composer textarea::placeholder { color: var(--text-3); }
 .cbtn { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; color: var(--text-2); flex: 0 0 auto; }
 .cbtn:hover { background: var(--surface-3); }
-.cbtn.mic { background: var(--amber); color: var(--amber-ink); }
 .cbtn svg { width: 18px; height: 18px; }
 
 /* Tonight panel */
@@ -103,3 +102,18 @@ textarea { font: inherit; }
 
 .view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .view[hidden] { display: none; }
+
+/* Markdown + read-aloud */
+.msg.fibb .md { white-space: normal; }
+.md p{margin:0 0 .6em}.md p:last-child{margin:0}.md ul,.md ol{margin:.3em 0 .6em 1.2em;padding:0}.md h1,.md h2,.md h3{font-size:1em;margin:.6em 0 .3em}.md code{background:var(--surface-3);padding:.1em .35em;border-radius:5px;font-size:.9em}.md pre{background:var(--surface-3);padding:10px;border-radius:9px;overflow:auto;white-space:pre}.md pre code{background:none;padding:0}.md blockquote{border-left:2px solid var(--amber);margin:.4em 0;padding-left:10px;color:var(--text-2);font-family:var(--serif);font-style:italic}
+.msg.fibb .b{position:relative}
+.read{position:absolute;right:8px;bottom:-14px;width:26px;height:26px;border-radius:50%;background:var(--surface);border:1px solid var(--line);color:var(--text-3);display:grid;place-items:center;opacity:0;transition:opacity .15s}
+.read svg{width:14px;height:14px}
+.msg.fibb:hover .read,.read:focus-visible{opacity:1}
+@media (hover:none){.read{opacity:1}}
+.cbtn.send{background:var(--amber);color:var(--amber-ink)}
+.cbtn.send:disabled{opacity:.4}
+.cbtn.mic{background:var(--surface-3);color:var(--text)}
+.cbtn.mic.on{background:var(--red);color:#fff;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 6px rgba(224,108,108,.25)}}
+.composer.listening{border-color:var(--red)}
