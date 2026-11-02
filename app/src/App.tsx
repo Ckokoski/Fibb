@@ -22,13 +22,14 @@ function loadVoice(): { readAloud: boolean; handsFree: boolean } {
   } catch { return { readAloud: false, handsFree: false }; }
 }
 
-function useNarrow(): boolean {
-  const q = '(max-width: 900px)';
+function useMediaQuery(q: string): boolean {
   const [m, setM] = useState(() => window.matchMedia(q).matches);
   useEffect(() => {
     const mq = window.matchMedia(q); const h = () => setM(mq.matches);
-    mq.addEventListener('change', h); return () => mq.removeEventListener('change', h);
-  }, []);
+    h();
+    if (mq.addEventListener) mq.addEventListener('change', h); else mq.addListener(h);
+    return () => { if (mq.removeEventListener) mq.removeEventListener('change', h); else mq.removeListener(h); };
+  }, [q]);
   return m;
 }
 
@@ -47,7 +48,10 @@ export function App() {
   const [, setTick] = useState(0);
   const lastStreak = useRef<number | null>(null);
   const celebrateTimer = useRef<number | null>(null);
-  const narrow = useNarrow();
+  const narrow = useMediaQuery('(max-width: 900px)');
+  // Crossing the breakpoint while open closes the panel so neither variant is left stale.
+  const prevNarrow = useRef(narrow);
+  useEffect(() => { if (prevNarrow.current !== narrow) { prevNarrow.current = narrow; setTonight(false); } }, [narrow]);
   const micAvailable = micSupported();
 
   useEffect(() => { applyTheme(theme); }, [theme]);
