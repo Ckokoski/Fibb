@@ -5,6 +5,7 @@
  */
 
 import { TTSService } from '../services/tts.js';
+import { logger } from '../services/logger.js';
 
 interface TelegramConfig {
   allowedUsers: string[];
@@ -140,19 +141,23 @@ export class TelegramBridge {
   setTranscriber(fn: (audio: Buffer, mime: string) => Promise<string>): void { this.transcriber = fn; }
   setCompanionVoice(fn: () => string): void { this.companionVoice = fn; }
 
-  private async handleVoiceNote(chatId: number, media: { file_id: string; mime_type?: string; duration?: number }, userName: string): Promise<void> {
+  private async handleVoiceNote(chatId: number, media: { file_id: string; mime_type?: string; duration?: number; file_size?: number }, userName: string): Promise<void> {
     if (!this.transcriber) { await this.sendMessage(chatId, 'I can hear you, but speech-to-text is not set up yet. Add a free Gemini key in Settings → Connections.'); return; }
     if ((media.duration ?? 0) > 180) { await this.sendMessage(chatId, 'That voice note is over 3 minutes. Send a shorter one and I will transcribe it.'); return; }
+    const MAX = 10 * 1024 * 1024;
+    if (typeof media.file_size === 'number' && media.file_size > MAX) { await this.sendMessage(chatId, 'That voice note is too large (over 10 MB).'); return; }
     await this.sendChatAction(chatId, 'typing');
     try {
       const meta = await fetch(`https://api.telegram.org/bot${this.token}/getFile?file_id=${encodeURIComponent(media.file_id)}`).then(r => r.json()) as any;
       const path = meta?.result?.file_path;
       if (!path) throw new Error('getFile returned no path');
       const buf = Buffer.from(await (await fetch(`https://api.telegram.org/file/bot${this.token}/${path}`)).arrayBuffer());
+      if (buf.length > MAX) { await this.sendMessage(chatId, 'That voice note is too large (over 10 MB).'); return; }
       const text = await this.transcriber(buf, media.mime_type || 'audio/ogg');
       this.voiceTurn.add(chatId);
       await this.handleInput(chatId, `[voice note] ${text}`, userName);
     } catch (err) {
+      logger.warn('telegram voice note failed', err instanceof Error ? err.message : String(err));
       await this.sendMessage(chatId, 'I could not transcribe that voice note. Try again or type it out.');
     } finally {
       this.voiceTurn.delete(chatId);
@@ -513,6 +518,7 @@ export class TelegramBridge {
     if (text.startsWith('/voice')) {
       const args = text.replace(/^\/voice\s*/, '').trim().toLowerCase();
       const voicePresets = Object.keys(TTSService.VOICE_PRESETS);
+      const byGender = (g: string) => Object.entries(TTSService.VOICE_PRESETS).filter(([, p]) => p.gender === g).map(([k]) => k).join(', ');
 
       if (args === 'off' || args === 'stop' || args === 'disable') {
         this.voiceMode.delete(chatId);
@@ -529,7 +535,7 @@ export class TelegramBridge {
           `/voice on — Enable voice responses\n` +
           `/voice off — Disable voice responses\n` +
           `/voice narrator_deep — Use a specific voice\n\n` +
-          `*Female:* narrator_female, narrator_warm, british_female, curious_kid\n*Male:* narrator_male, narrator_deep, british_male, storyteller, snarky_nerd`);
+          `*Female:* ${byGender('Female')}\n*Male:* ${byGender('Male')}`);
       }
       return;
     }
@@ -669,6 +675,11 @@ export class TelegramBridge {
 
 ${text}`;
       await this.sendChatAction(chatId, 'typing');
+      // Capture voice intent synchronously: voiceTurn is cleared once handleVoiceNote returns,
+      // but the respond callback fires later.
+      const wantVoice = this.voiceMode.has(chatId) || this.voiceTurn.has(chatId);
+      const modePreset = this.voiceMode.get(chatId);
+      const voicePreset = typeof modePreset === 'string' ? modePreset : (this.companionVoice?.() ?? undefined);
 
       let draftId: number | undefined;
       let buffer = '';
@@ -708,10 +719,8 @@ ${text}`;
             if (response.length > 4000) await this.sendMessage(chatId, response.slice(4000));
           }
           this.lastResponse.set(chatId, response);
-          if (this.voiceMode.has(chatId) || this.voiceTurn.has(chatId)) {
-            const preset = this.voiceMode.get(chatId);
-            const voice = typeof preset === 'string' ? preset : (this.companionVoice?.() ?? undefined);
-            await this.generateAndSendVoice(chatId, response, voice);
+          if (wantVoice) {
+            await this.generateAndSendVoice(chatId, response, voicePreset);
           }
         },
         undefined, undefined, undefined,

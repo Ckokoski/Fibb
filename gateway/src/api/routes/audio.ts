@@ -82,10 +82,15 @@ export function registerAudioRoutes(ctx: ApiContext): void {
   });
 
   // Transcribe an uploaded audio clip (multer memory storage, field "audio").
-  app.post('/api/audio/transcribe', audioUpload.single('audio'), async (req: Request, res: Response) => {
+  app.post('/api/audio/transcribe', (req: Request, res: Response, next: any) => audioUpload.single('audio')(req, res, (err: any) => {
+    if (err?.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'Audio too large (max 10 MB)' });
+    if (err) return res.status(400).json({ error: String(err.message || err) });
+    next();
+  }), async (req: Request, res: Response) => {
     const file = (req as any).file as { buffer: Buffer; mimetype: string; size: number } | undefined;
     if (!file?.buffer?.length) return res.status(400).json({ error: 'audio file required (multipart field "audio")' });
-    if (file.size > 10 * 1024 * 1024) return res.status(413).json({ error: 'Audio too large (max 10 MB)' });
+    const mt = file.mimetype || '';
+    if (!(mt.startsWith('audio/') || mt === 'video/webm' || mt === 'application/octet-stream')) return res.status(415).json({ error: 'Unsupported media type: ' + mt });
     try {
       const out = await services.transcribe.transcribe(file.buffer, file.mimetype || 'audio/webm');
       res.json(out);
