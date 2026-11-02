@@ -23,6 +23,12 @@ Docker is only for always-on VPS deployments (see SECURITY.md); you never need i
 - **Files**: `workspace/projects/` contains all generated content
 - **Telegram**: Use `/files` to list, `/read [file]` to preview
 
+## Voice
+
+- Edge voices (spoken replies) need no key.
+- The mic uses your browser's speech recognition where available. Otherwise it uploads audio to `/api/audio/transcribe`, which needs a Gemini key or `AUTHORAGENT_WHISPER_PATH` (plus optional `AUTHORAGENT_WHISPER_MODEL`).
+- Telegram voice notes need the same transcription setup.
+
 ## Add More Providers
 
 Fibb gets smarter with better models. In Settings, add:

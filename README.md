@@ -24,6 +24,14 @@ Fibb takes an idea (or your existing manuscript) through **research → outline 
 > (zip download) and the [`archive/wave3-marketing`](https://github.com/Ckokoski/Fibb/tree/archive/wave3-marketing) branch.
 > `main` is being rebuilt as **Fibb**, a chat-first writing companion; see `docs/superpowers/specs/`.
 
+**What works today**
+
+- Chat with memory
+- Six companions (Nib is the default), each with their own voice
+- Voice notes on Telegram
+- Mic, read-aloud, and hands-free mode in the app
+- Connections for your keys (free Gemini and local Ollama first)
+
 ---
 
 ## The Conductor's Studio

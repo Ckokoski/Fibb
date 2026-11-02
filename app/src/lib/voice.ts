@@ -19,15 +19,23 @@ export function startListening(onInterim: (t: string) => void, onFinal: (t: stri
       }
       onInterim((finalText + interim).trim());
     };
-    rec.onerror = (e: any) => { if (e.error !== 'aborted' && e.error !== 'no-speech') onError(e.error || 'speech error'); };
-    rec.onend = () => onFinal(finalText.trim());
+    let errored = false;
+    rec.onerror = (e: any) => { errored = true; if (e.error !== 'aborted' && e.error !== 'no-speech') onError(e.error || 'speech error'); };
+    rec.onend = () => onFinal(errored ? '' : finalText.trim());
     rec.start();
     return { stop: () => { try { rec.stop(); } catch { /* ignore */ } } };
   }
   // Fallback: record and upload.
   let recorder: MediaRecorder | null = null; const chunks: Blob[] = [];
+  let stopped = false;
   navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-    recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+    if (stopped) { stream.getTracks().forEach(t => t.stop()); onFinal(''); return; }
+    try {
+      const useWebm = typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('audio/webm');
+      recorder = useWebm ? new MediaRecorder(stream, { mimeType: 'audio/webm' }) : new MediaRecorder(stream);
+    } catch (err: any) {
+      stream.getTracks().forEach(t => t.stop()); onError(err?.message || 'recording unavailable'); onFinal(''); return;
+    }
     recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
     recorder.onstop = async () => {
       stream.getTracks().forEach(t => t.stop());
@@ -35,7 +43,7 @@ export function startListening(onInterim: (t: string) => void, onFinal: (t: stri
     };
     recorder.start(); onInterim('Listening…');
   }).catch(err => onError(err.message || 'microphone unavailable'));
-  return { stop: () => { try { recorder?.stop(); } catch { /* ignore */ } } };
+  return { stop: () => { stopped = true; try { if (recorder && recorder.state !== 'inactive') recorder.stop(); } catch { /* ignore */ } } };
 }
 
 export function micSupported(): boolean { return !!getSR() || !!navigator.mediaDevices?.getUserMedia; }

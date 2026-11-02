@@ -8,6 +8,7 @@ import { mkdir, readFile, writeFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { logger } from './logger.js';
+import { TTSService } from './tts.js';
 
 export interface Companion {
   id: string;
@@ -64,7 +65,9 @@ export class CompanionService {
 
   /** Pass null to clear the override and return to the companion's default voice. */
   async setVoiceOverride(preset: string | null): Promise<void> {
-    this.voiceOverride = preset && preset.trim() ? preset.trim() : null;
+    const next = preset && preset.trim() ? preset.trim() : null;
+    if (next && !Object.keys(TTSService.VOICE_PRESETS).includes(next)) throw new Error('Unknown voice preset');
+    this.voiceOverride = next;
     await this.persist();
   }
 

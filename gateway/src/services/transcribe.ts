@@ -20,7 +20,7 @@ export interface TranscribeResult { text: string; provider: 'gemini' | 'whisper'
 export class TranscribeService {
   constructor(
     private vault: Pick<Vault, 'get'>,
-    private opts: { geminiModel: string; geminiEndpoint?: string; whisperPath?: string; whisperModel?: string } = { geminiModel: 'gemini-2.0-flash' },
+    private opts: { geminiModel: string | (() => string); geminiEndpoint?: string; whisperPath?: string; whisperModel?: string } = { geminiModel: 'gemini-2.0-flash' },
   ) {}
 
   async transcribe(audio: Buffer, mimeType: string): Promise<TranscribeResult> {
@@ -38,7 +38,7 @@ export class TranscribeService {
 
   private async viaGemini(audio: Buffer, mimeType: string, key: string): Promise<TranscribeResult> {
     const endpoint = this.opts.geminiEndpoint ?? 'https://generativelanguage.googleapis.com/v1beta';
-    const res = await fetch(`${endpoint}/models/${this.opts.geminiModel}:generateContent`, {
+    const res = await fetch(`${endpoint}/models/${typeof this.opts.geminiModel === 'function' ? this.opts.geminiModel() : this.opts.geminiModel}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify({
@@ -51,7 +51,8 @@ export class TranscribeService {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      throw new Error(`Gemini transcription error ${res.status}: ${body.slice(0, 200)}`);
+      logger.warn(`Gemini transcription failed (HTTP ${res.status}): ${body.slice(0, 200)}`);
+      throw new Error(`Gemini transcription failed (HTTP ${res.status})`);
     }
     const data: any = await res.json();
     const text = (data?.candidates?.[0]?.content?.parts || []).map((p: any) => p?.text || '').join('').trim();

@@ -11,7 +11,7 @@ DOMPurify.addHook('afterSanitizeAttributes', n => {
 export function Message({ m, onRead }: { m: ChatMessage; onRead?: (text: string) => void }) {
   // Hook runs before the role branch so hook order is stable.
   const html = useMemo(
-    () => (m.role === 'user' ? '' : DOMPurify.sanitize(marked.parse(m.content || '') as string, { USE_PROFILES: { html: true }, FORBID_TAGS: ['img', 'svg', 'math'], FORBID_ATTR: ['style'] })),
+    () => (m.role === 'user' ? '' : DOMPurify.sanitize(marked.parse(m.content || '') as string, { USE_PROFILES: { html: true }, FORBID_TAGS: ['img', 'svg', 'math', 'form', 'input', 'button', 'textarea', 'select', 'option'], FORBID_ATTR: ['style'] })),
     [m.role, m.content],
   );
   if (m.role === 'user') return <div className="msg me"><div className="b">{m.content}</div></div>;

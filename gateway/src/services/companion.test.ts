@@ -23,6 +23,11 @@ describe('CompanionService', () => {
     expect(again.getActive().id).toBe('quill');
     await expect(svc.setActive('dragonzilla')).rejects.toThrow(/unknown companion/i);
   });
+  it('rejects unknown voice presets and accepts known ones', async () => {
+    await expect(svc.setVoiceOverride('nope_voice')).rejects.toThrow(/unknown voice preset/i);
+    await svc.setVoiceOverride('narrator_warm');
+    await svc.setVoiceOverride(null);
+  });
   it('falls back to nib when the saved file is corrupt', async () => {
     const { mkdirSync, writeFileSync } = await import('fs');
     mkdirSync(join(dir, '.config'), { recursive: true });

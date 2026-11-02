@@ -54,7 +54,7 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
 
   const toggleMic = () => {
     // Use the ref (not `listening` state) so a call from a stale closure still toggles correctly.
-    if (listenerRef.current) { listenerRef.current.stop(); return; }
+    if (listenerRef.current) { listenerRef.current.stop(); listenerRef.current = null; setListening(false); return; }
     stopPlayback(); setListening(true); setInterim('');
     listenerRef.current = startListening(
       setInterim,
@@ -67,7 +67,7 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
   const readOut = async (t: string) => {
     try {
       const u = await speak(t, settingsRef.current.voicePreset);
-      if (u) await playUrl(u);
+      if (u && !listenerRef.current) await playUrl(u);
     } catch { /* ignore audio errors */ }
   };
 
@@ -99,7 +99,7 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
       setSpeaking(true);
       try {
         const url = await speak(acc, st.voicePreset);
-        if (url) {
+        if (url && !listenerRef.current) {
           const natural = await playUrl(url);
           if (natural && settingsRef.current.handsFree && spoken && !listenerRef.current) toggleMicRef.current();
         }

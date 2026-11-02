@@ -151,14 +151,19 @@ export class TelegramBridge {
       const meta = await fetch(`https://api.telegram.org/bot${this.token}/getFile?file_id=${encodeURIComponent(media.file_id)}`).then(r => r.json()) as any;
       const path = meta?.result?.file_path;
       if (!path) throw new Error('getFile returned no path');
-      const buf = Buffer.from(await (await fetch(`https://api.telegram.org/file/bot${this.token}/${path}`)).arrayBuffer());
+      const fileRes = await fetch(`https://api.telegram.org/file/bot${this.token}/${path}`);
+      if (!fileRes.ok) throw new Error(`file download failed (HTTP ${fileRes.status})`);
+      const buf = Buffer.from(await fileRes.arrayBuffer());
       if (buf.length > MAX) { await this.sendMessage(chatId, 'That voice note is too large (over 10 MB).'); return; }
       const text = await this.transcriber(buf, media.mime_type || 'audio/ogg');
       this.voiceTurn.add(chatId);
       await this.handleInput(chatId, `[voice note] ${text}`, userName);
     } catch (err) {
-      logger.warn('telegram voice note failed', err instanceof Error ? err.message : String(err));
-      await this.sendMessage(chatId, 'I could not transcribe that voice note. Try again or type it out.');
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('telegram voice note failed', msg);
+      await this.sendMessage(chatId, /No transcription provider/i.test(msg)
+        ? "I can hear you, but speech-to-text isn't set up yet. Add a free Gemini key in Settings → Connections (or set AUTHORAGENT_WHISPER_PATH) and try again."
+        : 'I could not transcribe that voice note. Try again or type it out.');
     } finally {
       this.voiceTurn.delete(chatId);
     }
