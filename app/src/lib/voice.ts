@@ -19,7 +19,7 @@ export function startListening(onInterim: (t: string) => void, onFinal: (t: stri
       }
       onInterim((finalText + interim).trim());
     };
-    rec.onerror = (e: any) => { if (e.error !== 'aborted') onError(e.error || 'speech error'); };
+    rec.onerror = (e: any) => { if (e.error !== 'aborted' && e.error !== 'no-speech') onError(e.error || 'speech error'); };
     rec.onend = () => onFinal(finalText.trim());
     rec.start();
     return { stop: () => { try { rec.stop(); } catch { /* ignore */ } } };
@@ -40,15 +40,23 @@ export function startListening(onInterim: (t: string) => void, onFinal: (t: stri
 
 export function micSupported(): boolean { return !!getSR() || !!navigator.mediaDevices?.getUserMedia; }
 
-/** Plays one audio URL at a time; resolves when playback ends. */
+/** Plays one audio URL at a time; resolves when playback ends or is stopped. */
 let current: HTMLAudioElement | null = null;
+let currentResolve: (() => void) | null = null;
 export function playUrl(url: string): Promise<void> {
   return new Promise(resolve => {
     stopPlayback();
     const a = new Audio(url); current = a;
-    a.onended = () => { if (current === a) current = null; resolve(); };
-    a.onerror = () => { if (current === a) current = null; resolve(); };
-    a.play().catch(() => resolve());
+    const done = () => { if (current === a) { current = null; currentResolve = null; } resolve(); };
+    currentResolve = done;
+    a.onended = done;
+    a.onerror = done;
+    a.play().catch(done);
   });
 }
-export function stopPlayback(): void { if (current) { try { current.pause(); } catch { /* ignore */ } current = null; } }
+export function stopPlayback(): void {
+  const r = currentResolve;
+  if (current) { try { current.pause(); } catch { /* ignore */ } current = null; }
+  currentResolve = null;
+  r?.();
+}

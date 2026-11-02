@@ -4,11 +4,14 @@ import DOMPurify from 'dompurify';
 
 export interface ChatMessage { id: string; role: 'user' | 'assistant'; content: string; streaming?: boolean }
 marked.setOptions({ breaks: true, gfm: true });
+DOMPurify.addHook('afterSanitizeAttributes', n => {
+  if (n.tagName === 'A') { n.setAttribute('target', '_blank'); n.setAttribute('rel', 'noopener noreferrer'); }
+});
 
 export function Message({ m, onRead }: { m: ChatMessage; onRead?: (text: string) => void }) {
   // Hook runs before the role branch so hook order is stable.
   const html = useMemo(
-    () => (m.role === 'user' ? '' : DOMPurify.sanitize(marked.parse(m.content || '') as string, { USE_PROFILES: { html: true } })),
+    () => (m.role === 'user' ? '' : DOMPurify.sanitize(marked.parse(m.content || '') as string, { USE_PROFILES: { html: true }, FORBID_TAGS: ['img', 'svg', 'math'], FORBID_ATTR: ['style'] })),
     [m.role, m.content],
   );
   if (m.role === 'user') return <div className="msg me"><div className="b">{m.content}</div></div>;

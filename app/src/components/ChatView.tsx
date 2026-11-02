@@ -36,28 +36,39 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState('');
   const listenerRef = useRef<Listener | null>(null);
+  const [speaking, setSpeaking] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const settingsRef = useRef({ readAloud, handsFree, voicePreset });
+  const sendRef = useRef<(t: string, spoken?: boolean) => Promise<void>>(async () => {});
+  const toggleMicRef = useRef<() => void>(() => {});
+  useEffect(() => { settingsRef.current = { readAloud, handsFree, voicePreset }; });
 
   useEffect(() => { try { localStorage.setItem(STORE, JSON.stringify(msgs.slice(-200))); } catch { /* ignore */ } }, [msgs]);
   const lastLen = msgs[msgs.length - 1]?.content.length ?? 0;
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs.length, lastLen, busy]);
   useEffect(() => { if (active) endRef.current?.scrollIntoView(); }, [active]);
-  useEffect(() => { onBusy(busy); }, [busy, onBusy]);
   useEffect(() => { onListening(listening); }, [listening, onListening]);
+  useEffect(() => { onBusy(busy || speaking); }, [busy, speaking, onBusy]);
   useEffect(() => () => { listenerRef.current?.stop(); stopPlayback(); }, []);
 
   const toggleMic = () => {
-    // Use the ref (not `listening` state) so a call from a stale send() closure still toggles correctly.
+    // Use the ref (not `listening` state) so a call from a stale closure still toggles correctly.
     if (listenerRef.current) { listenerRef.current.stop(); return; }
     stopPlayback(); setListening(true); setInterim('');
     listenerRef.current = startListening(
       setInterim,
-      (final) => { setListening(false); setInterim(''); listenerRef.current = null; if (final.trim()) send(final.trim(), true); },
+      (final) => { setListening(false); setInterim(''); listenerRef.current = null; if (final.trim()) void sendRef.current(final.trim(), true); },
       (msg) => { setListening(false); setInterim(''); listenerRef.current = null; setMsgs(m => [...m, { id: crypto.randomUUID(), role: 'assistant', content: `Mic problem: ${msg}` }]); },
     );
   };
+  toggleMicRef.current = toggleMic;
 
-  const readOut = (t: string) => { speak(t, voicePreset).then(u => { if (u) void playUrl(u); }); };
+  const readOut = async (t: string) => {
+    try {
+      const u = await speak(t, settingsRef.current.voicePreset);
+      if (u) await playUrl(u);
+    } catch { /* ignore audio errors */ }
+  };
 
   const send = async (text: string, spoken = false) => {
     const uid = crypto.randomUUID();
@@ -74,24 +85,34 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
           setMsgs(m => m.map(x => x.id === aid ? { ...x, content: ev.message, streaming: false } : x));
         }
       }
-      if ((readAloud || spoken) && acc) {
-        const url = await speak(acc, voicePreset);
-        if (url) { await playUrl(url); if (handsFree && spoken) toggleMic(); }
-      }
     } catch {
       setMsgs(m => m.map(x => x.id === aid ? { ...x, content: x.content || `${companionName} could not reach the server. Is it running?`, streaming: false } : x));
     } finally {
       setBusy(false);
       onTurn();
     }
+    // Spoken reply runs after the composer is free; audio never blocks it.
+    const st = settingsRef.current;
+    if ((st.readAloud || spoken) && acc) {
+      setSpeaking(true);
+      try {
+        const url = await speak(acc, st.voicePreset);
+        if (url) {
+          await playUrl(url);
+          if (settingsRef.current.handsFree && spoken) toggleMicRef.current();
+        }
+      } catch { /* ignore audio errors */ }
+      finally { setSpeaking(false); }
+    }
   };
+  sendRef.current = send;
 
   const READ_BACK = 'Read that back to me';
   const chips = msgs.length <= 1
     ? ["I'm working on a novel", 'Help me find a premise', "What can you do?"]
     : ['Check the last chapter', "What's on tonight?", 'Brainstorm a scene', READ_BACK];
   const lastReply = [...msgs].reverse().find(m => m.role === 'assistant' && m.content && !m.streaming);
-  const onChip = (c: string) => { if (c === READ_BACK) { if (lastReply) readOut(lastReply.content); } else send(c); };
+  const onChip = (c: string) => { if (c === READ_BACK) { if (lastReply) void readOut(lastReply.content); } else send(c); };
 
   return (
     <>
@@ -105,7 +126,7 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
             </div>
           )}
           <div className="day">Today</div>
-          {msgs.map(m => <Message key={m.id} m={m.id === 'greet' ? { ...m, content: greeting(companionName) } : m} onRead={readOut} />)}
+          {msgs.map(m => <Message key={m.id} m={m.id === 'greet' ? { ...m, content: greeting(companionName) } : m} onRead={t => { void readOut(t); }} />)}
           {needsProvider && <FirstRunCard onDone={() => { setNeedsProvider(false); send('Thanks, you’re connected now. Say hi?'); }} />}
           <div ref={endRef} />
         </div>
@@ -114,7 +135,7 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
         <button className="chip tonight" onClick={onOpenTonight}>Tonight</button>
         {chips.map(c => <button key={c} className="chip" onClick={() => onChip(c)} disabled={busy}>{c}</button>)}
       </div>
-      <Composer onSend={t => send(t)} disabled={busy} listening={listening} interim={interim} onMic={toggleMic} micAvailable={micSupported()} />
+      <Composer onSend={t => send(t)} disabled={busy} listening={listening} interim={interim} onMic={toggleMic} micAvailable={micSupported()} micDisabled={busy} />
     </>
   );
 }

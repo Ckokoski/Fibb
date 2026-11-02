@@ -22,6 +22,7 @@ function KeyRow({ slot, connected, onChanged }: { slot: typeof SLOTS[number]; co
   const [val, setVal] = useState('');
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState('');
+  const [bad, setBad] = useState(false);
   return (
     <div className="keyrow">
       <div className="keyhead">
@@ -35,18 +36,23 @@ function KeyRow({ slot, connected, onChanged }: { slot: typeof SLOTS[number]; co
         <input className="input" type="password" autoComplete="off" value={val} onChange={e => setVal(e.target.value)}
           placeholder={connected ? '•••••••• (stored)' : 'Paste key'} aria-label={`${slot.label} key`} />
         <button className="btn pri" disabled={busy || val.trim().length < 8} onClick={async () => {
-          setBusy(true); setNote('');
-          const r = await saveVaultKey(slot.key, val.trim());
-          setBusy(false); setVal('');
-          setNote(r.ok ? (r.warning || 'Saved') : 'Could not save');
-          onChanged();
+          setBusy(true); setNote(''); setBad(false);
+          try {
+            const r = await saveVaultKey(slot.key, val.trim());
+            if (r.ok) { setVal(''); setNote(r.warning || 'Saved'); onChanged(); }
+            else { setBad(true); setNote(r.warning || 'Could not save. Your key is still in the box.'); }
+          } catch (e: any) { setBad(true); setNote(e?.message || 'Could not save'); }
+          finally { setBusy(false); }
         }}>Save</button>
         {connected && <button className="btn" disabled={busy} onClick={async () => {
           if (!window.confirm(`Remove the stored ${slot.label} key?`)) return;
-          setBusy(true); await deleteVaultKey(slot.key); setBusy(false); setNote('Removed'); onChanged();
+          setBusy(true); setBad(false);
+          try { const ok = await deleteVaultKey(slot.key); if (ok) { setNote('Removed'); onChanged(); } else { setBad(true); setNote('Could not remove'); } }
+          catch (e: any) { setBad(true); setNote(e?.message || 'Could not remove'); }
+          finally { setBusy(false); }
         }}>Remove</button>}
       </div>
-      {note && <div className="s">{note}</div>}
+      {note && <div className="s" role="status" style={bad ? { color: 'var(--red)' } : undefined}>{note}</div>}
     </div>
   );
 }
@@ -59,6 +65,7 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
   const [voices, setVoices] = useState<VoicePreset[]>([]);
   const [chosen, setChosen] = useState<string | undefined>(companion?.voicePreset);
   const [previewing, setPreviewing] = useState('');
+  const [error, setError] = useState('');
 
   const reload = useCallback(() => {
     getVaultKeys().then(setKeys).catch(() => {});
@@ -70,20 +77,26 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
   const name = companion?.name ?? 'Fibb';
   const ollama = models.find(m => m.id === 'ollama');
   const preview = async (id: string) => {
-    setPreviewing(id);
-    const u = await speak(`Hi, I'm ${name}. Let's write something today.`, id);
-    if (u) await playUrl(u);
-    setPreviewing('');
+    setPreviewing(id); setError('');
+    try {
+      const u = await speak(`Hi, I'm ${name}. Let's write something today.`, id);
+      if (u) await playUrl(u); else setError('Preview unavailable');
+    } catch (e: any) { setError(e?.message || 'Preview failed'); }
+    finally { setPreviewing(''); }
   };
   const pickVoice = async (id: string | null) => {
-    const r = await setCompanion({ voicePreset: id });
-    if (r) setChosen(r.voicePreset);
+    setError('');
+    try {
+      const r = await setCompanion({ voicePreset: id });
+      if (r) setChosen(r.voicePreset); else setError('Could not change voice');
+    } catch (e: any) { setError(e?.message || 'Could not change voice'); }
     onCompanionChanged();
   };
   const refreshCompanion = async () => { const c = await getCompanion(); if (c) setChosen(c.voicePreset); onCompanionChanged(); };
 
   return (
     <div className="thread"><div className="thread-inner settings">
+      {error && <div className="card" role="alert" style={{ color: 'var(--red)' }}>{error}</div>}
       <section className="card">
         <div className="t">Free, no key needed</div>
         <ul className="free">
@@ -98,7 +111,10 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
         <div className="s">Keys are encrypted in the vault. This page only shows whether a key is stored, never its value.</div>
         <div className="act">
           <button className="btn" disabled={testing} onClick={async () => {
-            setTesting(true); const p = await refreshProviders(); setOnline(p.map(x => x.name || x.id)); setTesting(false); reload();
+            setTesting(true); setError('');
+            try { const p = await refreshProviders(); setOnline(p.map(x => x.name || x.id)); reload(); }
+            catch (e: any) { setError(e?.message || 'Test failed'); }
+            finally { setTesting(false); }
           }}>{testing ? 'Testing…' : 'Test connections'}</button>
           {online && <span className="s">{online.length ? `Online: ${online.join(', ')}` : 'No providers online yet'}</span>}
         </div>
@@ -114,7 +130,7 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
             return (
               <label className="modelrow" key={m.id}>
                 <span>{m.id}{!m.available && <em> (no key)</em>}</span>
-                <select className="input" value={m.currentModel} onChange={async e => { await setModel(m.id, e.target.value); reload(); }}>
+                <select className="input" value={m.currentModel} onChange={async e => { setError(''); try { if (!(await setModel(m.id, e.target.value))) setError('Could not change model'); } catch (er: any) { setError(er?.message || 'Could not change model'); } reload(); }}>
                   {opts.map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
               </label>

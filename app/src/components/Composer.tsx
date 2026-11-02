@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-export function Composer({ onSend, disabled, listening, onMic, interim, micAvailable }: {
-  onSend: (text: string) => void; disabled: boolean; listening: boolean; onMic: () => void; interim: string; micAvailable: boolean;
+export function Composer({ onSend, disabled, listening, onMic, interim, micAvailable, micDisabled = false }: {
+  onSend: (text: string) => void; disabled: boolean; listening: boolean; onMic: () => void; interim: string; micAvailable: boolean; micDisabled?: boolean;
 }) {
   const [text, setText] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -12,7 +12,7 @@ export function Composer({ onSend, disabled, listening, onMic, interim, micAvail
         onChange={e => { setText(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px'; }}
         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }} aria-label="Message" />
       {micAvailable && (
-        <button className={`cbtn mic${listening ? ' on' : ''}`} onClick={onMic} aria-pressed={listening} aria-label={listening ? 'Stop listening' : 'Speak'} title={listening ? 'Stop' : 'Speak'}>
+        <button className={`cbtn mic${listening ? ' on' : ''}`} onClick={onMic} disabled={micDisabled && !listening} aria-pressed={listening} aria-label={listening ? 'Stop listening' : 'Speak'} title={listening ? 'Stop' : 'Speak'}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v4"/></svg>
         </button>
       )}
