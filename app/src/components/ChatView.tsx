@@ -4,6 +4,8 @@ import { startListening, stopPlayback, playUrl, micSupported, type Listener } fr
 import { Message, type ChatMessage } from './Message';
 import { Composer } from './Composer';
 import { FirstRunCard } from './FirstRunCard';
+import { CompanionPicker } from './CompanionPicker';
+import type { Companion } from '../lib/api';
 
 const STORE = 'fibb_chat_webchat';
 const greeting = (name: string) => `Hi, I'm ${name}. I'm your writing partner inside Fibb: I keep your book straight, draft when you want me to, and work on it while you sleep. What's your name, and what are you working on?`;
@@ -24,8 +26,9 @@ function load(): ChatMessage[] {
   return [{ id: 'greet', role: 'assistant', content: greeting('Fibb') }];
 }
 
-export function ChatView({ onTurn, active, companionName, readAloud, handsFree, voicePreset }: {
+export function ChatView({ onTurn, active, companionName, readAloud, handsFree, voicePreset, onboarding, onPicked, onBusy, onListening, onOpenTonight }: {
   onTurn: () => void; active: boolean; companionName: string; readAloud: boolean; handsFree: boolean; voicePreset?: string;
+  onboarding: boolean; onPicked: (c: Companion) => void; onBusy: (b: boolean) => void; onListening: (b: boolean) => void; onOpenTonight: () => void;
 }) {
   const [msgs, setMsgs] = useState<ChatMessage[]>(load);
   const [busy, setBusy] = useState(false);
@@ -39,6 +42,8 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
   const lastLen = msgs[msgs.length - 1]?.content.length ?? 0;
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs.length, lastLen, busy]);
   useEffect(() => { if (active) endRef.current?.scrollIntoView(); }, [active]);
+  useEffect(() => { onBusy(busy); }, [busy, onBusy]);
+  useEffect(() => { onListening(listening); }, [listening, onListening]);
   useEffect(() => () => { listenerRef.current?.stop(); stopPlayback(); }, []);
 
   const toggleMic = () => {
@@ -92,6 +97,13 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
     <>
       <div className="thread">
         <div className="thread-inner">
+          {onboarding && (
+            <div className="card" role="region" aria-label="Choose your companion">
+              <div className="t">Who do you want to write with?</div>
+              <div className="s">Pick a companion. You can change this any time in Settings.</div>
+              <CompanionPicker onPicked={onPicked} />
+            </div>
+          )}
           <div className="day">Today</div>
           {msgs.map(m => <Message key={m.id} m={m.id === 'greet' ? { ...m, content: greeting(companionName) } : m} onRead={readOut} />)}
           {needsProvider && <FirstRunCard onDone={() => { setNeedsProvider(false); send('Thanks, you’re connected now. Say hi?'); }} />}
@@ -99,6 +111,7 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
         </div>
       </div>
       <div className="chips">
+        <button className="chip tonight" onClick={onOpenTonight}>Tonight</button>
         {chips.map(c => <button key={c} className="chip" onClick={() => onChip(c)} disabled={busy}>{c}</button>)}
       </div>
       <Composer onSend={t => send(t)} disabled={busy} listening={listening} interim={interim} onMic={toggleMic} micAvailable={micSupported()} />

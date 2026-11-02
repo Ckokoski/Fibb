@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
-import { getFacts, getWritingStats, type Facts, type WritingStats } from '../lib/api';
+import { getFacts, getWritingStats, type Companion, type Facts, type WritingStats } from '../lib/api';
+import { MascotAvatar } from './MascotAvatar';
 
-export function TonightPanel({ refreshKey }: { refreshKey: number }) {
+export type MascotState = 'idle' | 'thinking' | 'listening';
+
+export function TonightBody({ refreshKey, companion, state }: { refreshKey: number; companion: Companion | null; state: MascotState }) {
+  const who = companion?.name ?? 'Fibb';
   const [facts, setFacts] = useState<Facts | null>(null);
   const [stats, setStats] = useState<WritingStats>({});
   useEffect(() => { getFacts().then(setFacts).catch(() => {}); getWritingStats().then(setStats); }, [refreshKey]);
@@ -11,11 +15,8 @@ export function TonightPanel({ refreshKey }: { refreshKey: number }) {
   const words = Number(stats.wordsTotal ?? 0);
 
   return (
-    <aside className="side" aria-label="Tonight">
-      <div className="mascot">
-        <div className="blob" aria-hidden><span className="e l" /><span className="e r" /><span className="g" /></div>
-        <span className="cap-txt">Fibb · awake</span>
-      </div>
+    <>
+      <MascotAvatar c={companion} state={state} />
       <div>
         <div className="streak"><span className="n">{streak}</span><span className="l">day streak · {words.toLocaleString()} words</span></div>
         {book?.goal && (<>
@@ -26,17 +27,21 @@ export function TonightPanel({ refreshKey }: { refreshKey: number }) {
       <div>
         <h4>Tonight</h4>
         <div className="tasks">
-          <div className="task"><div><div className="tt">Nothing queued yet</div><div className="ts">Tell Fibb “tonight, draft the next chapter” to queue work. Overnight runs arrive in the next update.</div></div></div>
+          <div className="task"><div><div className="tt">Nothing queued yet</div><div className="ts">Tell {who} “tonight, draft the next chapter” to queue work. Overnight runs arrive in the next update.</div></div></div>
         </div>
       </div>
       <div>
-        <h4>What Fibb knows</h4>
+        <h4>What {who} knows</h4>
         <div className="muted" style={{ marginTop: 8 }}>
-          {facts?.name ? `You're ${facts.name}.` : 'Fibb will ask your name and what you’re working on.'}
+          {facts?.name ? `You're ${facts.name}.` : `${who} will ask your name and what you’re working on.`}
           {book ? ` Working on ${book.title}${book.chapter ? `, ch. ${book.chapter}` : ''}.` : ''}
           {facts?.people?.length ? ` Knows ${facts.people.length} ${facts.people.length === 1 ? 'person' : 'people'} from your work.` : ''}
         </div>
       </div>
-    </aside>
+    </>
   );
+}
+
+export function TonightPanel(props: { refreshKey: number; companion: Companion | null; state: MascotState }) {
+  return <aside className="side" aria-label="Tonight"><TonightBody {...props} /></aside>;
 }
