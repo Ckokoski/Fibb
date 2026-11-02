@@ -953,6 +953,8 @@ class FibbGateway {
           this.handleMessage(content, channel, respond, extra, task, provider, onChunk)
         );
         this.telegram.setCommandHandlers(commandHandlers);
+        this.telegram.setTranscriber((b, m) => this.transcribe.transcribe(b, m).then(r => r.text));
+        this.telegram.setCompanionVoice(() => this.companion.getVoicePreset());
         await this.telegram.connect();
         logger.info('  ✓ Telegram bridge connected (command center mode)');
       } else {
@@ -1699,6 +1701,8 @@ class FibbGateway {
         this.handleMessage(content, channel, respond, extra, task, provider, onChunk)
       );
       this.telegram.setCommandHandlers(this.buildTelegramCommandHandlers());
+      this.telegram.setTranscriber((b, m) => this.transcribe.transcribe(b, m).then(r => r.text));
+      this.telegram.setCompanionVoice(() => this.companion.getVoicePreset());
       await this.telegram.connect();
       this.audit.log('bridge', 'telegram_connected', {});
       this.activityLog.log({

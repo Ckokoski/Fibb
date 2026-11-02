@@ -4,6 +4,8 @@
  * Users give orders via Telegram, Fibb executes in the VM
  */
 
+import { TTSService } from '../services/tts.js';
+
 interface TelegramConfig {
   allowedUsers: string[];
   pairingEnabled: boolean;
@@ -42,6 +44,9 @@ export class TelegramBridge {
   private knownChatIds: Set<number> = new Set(); // Track chat IDs for broadcasting
   private lastFileList: string[] = []; // For /read # file picker
   private voiceMode: Map<number, string | boolean> = new Map(); // chatId → voice preset or false
+  private transcriber: ((a: Buffer, m: string) => Promise<string>) | null = null;
+  private companionVoice: (() => string) | null = null;
+  private voiceTurn = new Set<number>(); // chats whose current turn started as a voice note
   private lastResponse: Map<number, string> = new Map(); // chatId → last AI response for "read that back"
 
   constructor(token: string, config: Partial<TelegramConfig>) {
@@ -101,7 +106,8 @@ export class TelegramBridge {
       for (const update of data.result || []) {
         this.lastUpdateId = update.update_id;
         const message = update.message;
-        if (!message?.text) continue;
+        if (!message) continue;
+        if (!message.text && !message.voice && !message.audio) continue;
 
         const userId = String(message.from.id);
         const chatId = message.chat.id;
@@ -117,12 +123,39 @@ export class TelegramBridge {
         // Track chat ID for broadcasting (only for allowed users)
         this.knownChatIds.add(chatId);
 
+        if (message.voice || message.audio) {
+          await this.handleVoiceNote(chatId, message.voice ?? message.audio, userName);
+          continue;
+        }
+
         // Route to appropriate handler
         await this.handleInput(chatId, message.text, userName);
       }
     } catch (error: any) {
       if (error?.name === 'AbortError') return; // Normal timeout, just retry
       console.error('Telegram poll error:', error);
+    }
+  }
+
+  setTranscriber(fn: (audio: Buffer, mime: string) => Promise<string>): void { this.transcriber = fn; }
+  setCompanionVoice(fn: () => string): void { this.companionVoice = fn; }
+
+  private async handleVoiceNote(chatId: number, media: { file_id: string; mime_type?: string; duration?: number }, userName: string): Promise<void> {
+    if (!this.transcriber) { await this.sendMessage(chatId, 'I can hear you, but speech-to-text is not set up yet. Add a free Gemini key in Settings → Connections.'); return; }
+    if ((media.duration ?? 0) > 180) { await this.sendMessage(chatId, 'That voice note is over 3 minutes. Send a shorter one and I will transcribe it.'); return; }
+    await this.sendChatAction(chatId, 'typing');
+    try {
+      const meta = await fetch(`https://api.telegram.org/bot${this.token}/getFile?file_id=${encodeURIComponent(media.file_id)}`).then(r => r.json()) as any;
+      const path = meta?.result?.file_path;
+      if (!path) throw new Error('getFile returned no path');
+      const buf = Buffer.from(await (await fetch(`https://api.telegram.org/file/bot${this.token}/${path}`)).arrayBuffer());
+      const text = await this.transcriber(buf, media.mime_type || 'audio/ogg');
+      this.voiceTurn.add(chatId);
+      await this.handleInput(chatId, `[voice note] ${text}`, userName);
+    } catch (err) {
+      await this.sendMessage(chatId, 'I could not transcribe that voice note. Try again or type it out.');
+    } finally {
+      this.voiceTurn.delete(chatId);
     }
   }
 
@@ -479,7 +512,7 @@ export class TelegramBridge {
     // ── /voice — Toggle voice responses for chat messages ──
     if (text.startsWith('/voice')) {
       const args = text.replace(/^\/voice\s*/, '').trim().toLowerCase();
-      const voicePresets = ['narrator_female', 'narrator_male', 'narrator_deep', 'narrator_warm', 'british_male', 'british_female', 'storyteller'];
+      const voicePresets = Object.keys(TTSService.VOICE_PRESETS);
 
       if (args === 'off' || args === 'stop' || args === 'disable') {
         this.voiceMode.delete(chatId);
@@ -496,7 +529,7 @@ export class TelegramBridge {
           `/voice on — Enable voice responses\n` +
           `/voice off — Disable voice responses\n` +
           `/voice narrator_deep — Use a specific voice\n\n` +
-          `*Voices:* ${voicePresets.join(', ')}`);
+          `*Female:* narrator_female, narrator_warm, british_female, curious_kid\n*Male:* narrator_male, narrator_deep, british_male, storyteller, snarky_nerd`);
       }
       return;
     }
@@ -675,8 +708,10 @@ ${text}`;
             if (response.length > 4000) await this.sendMessage(chatId, response.slice(4000));
           }
           this.lastResponse.set(chatId, response);
-          if (this.voiceMode.has(chatId)) {
-            await this.generateAndSendVoice(chatId, response, this.voiceMode.get(chatId));
+          if (this.voiceMode.has(chatId) || this.voiceTurn.has(chatId)) {
+            const preset = this.voiceMode.get(chatId);
+            const voice = typeof preset === 'string' ? preset : (this.companionVoice?.() ?? undefined);
+            await this.generateAndSendVoice(chatId, response, voice);
           }
         },
         undefined, undefined, undefined,
