@@ -40,23 +40,23 @@ export function startListening(onInterim: (t: string) => void, onFinal: (t: stri
 
 export function micSupported(): boolean { return !!getSR() || !!navigator.mediaDevices?.getUserMedia; }
 
-/** Plays one audio URL at a time; resolves when playback ends or is stopped. */
+/** Plays one audio URL at a time. Resolves true if it ended naturally, false if interrupted or failed. */
 let current: HTMLAudioElement | null = null;
-let currentResolve: (() => void) | null = null;
-export function playUrl(url: string): Promise<void> {
+let currentResolve: ((natural: boolean) => void) | null = null;
+export function playUrl(url: string): Promise<boolean> {
   return new Promise(resolve => {
     stopPlayback();
     const a = new Audio(url); current = a;
-    const done = () => { if (current === a) { current = null; currentResolve = null; } resolve(); };
-    currentResolve = done;
-    a.onended = done;
-    a.onerror = done;
-    a.play().catch(done);
+    const finish = (natural: boolean) => { if (current === a) { current = null; currentResolve = null; } resolve(natural); };
+    currentResolve = finish;
+    a.onended = () => finish(true);
+    a.onerror = () => finish(false);
+    a.play().catch(() => finish(false));
   });
 }
 export function stopPlayback(): void {
   const r = currentResolve;
   if (current) { try { current.pause(); } catch { /* ignore */ } current = null; }
   currentResolve = null;
-  r?.();
+  r?.(false);
 }

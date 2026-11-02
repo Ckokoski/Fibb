@@ -37,6 +37,7 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
   const [interim, setInterim] = useState('');
   const listenerRef = useRef<Listener | null>(null);
   const [speaking, setSpeaking] = useState(false);
+  const speakTokenRef = useRef(0);
   const endRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef({ readAloud, handsFree, voicePreset });
   const sendRef = useRef<(t: string, spoken?: boolean) => Promise<void>>(async () => {});
@@ -94,15 +95,16 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
     // Spoken reply runs after the composer is free; audio never blocks it.
     const st = settingsRef.current;
     if ((st.readAloud || spoken) && acc) {
+      const tok = ++speakTokenRef.current;
       setSpeaking(true);
       try {
         const url = await speak(acc, st.voicePreset);
         if (url) {
-          await playUrl(url);
-          if (settingsRef.current.handsFree && spoken) toggleMicRef.current();
+          const natural = await playUrl(url);
+          if (natural && settingsRef.current.handsFree && spoken && !listenerRef.current) toggleMicRef.current();
         }
       } catch { /* ignore audio errors */ }
-      finally { setSpeaking(false); }
+      finally { if (speakTokenRef.current === tok) setSpeaking(false); }
     }
   };
   sendRef.current = send;
