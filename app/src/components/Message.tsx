@@ -17,7 +17,6 @@ export function Message({ m, onRead }: { m: ChatMessage; onRead?: (text: string)
   if (m.role === 'user') return <div className="msg me"><div className="b">{m.content}</div></div>;
   return (
     <div className={`msg fibb${m.streaming ? ' streaming' : ''}`}>
-      <div className="m" aria-hidden />
       <div className="b">
         {/* HTML is sanitized by DOMPurify above: the only permitted dangerouslySetInnerHTML. */}
         <div className="md" dangerouslySetInnerHTML={{ __html: html }} />

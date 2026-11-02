@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 import type { Companion } from '../lib/api';
-import { TonightBody, type MascotState } from './TonightPanel';
+import { TonightBody } from './TonightPanel';
 
 /** Mobile bottom sheet reusing the Tonight panel content. */
-export function TonightSheet({ open, onClose, refreshKey, companion, state }: {
-  open: boolean; onClose: () => void; refreshKey: number; companion: Companion | null; state: MascotState;
+export function TonightSheet({ open, onClose, refreshKey, companion }: {
+  open: boolean; onClose: () => void; refreshKey: number; companion: Companion | null;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -17,7 +17,7 @@ export function TonightSheet({ open, onClose, refreshKey, companion, state }: {
       <div className="sheet-scrim" onClick={onClose} />
       <div className="sheet" role="dialog" aria-modal="true" aria-label="Tonight">
         <button className="sheet-close" onClick={onClose} aria-label="Close">Close</button>
-        <TonightBody refreshKey={refreshKey} companion={companion} state={state} />
+        <TonightBody refreshKey={refreshKey} companion={companion} />
       </div>
     </>
   );
