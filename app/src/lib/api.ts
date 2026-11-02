@@ -59,3 +59,75 @@ export async function saveGeminiKey(key: string): Promise<boolean> {
   });
   return r.ok;
 }
+
+export interface Companion { id: string; name: string; voicePreset: string; tagline: string; image: string; defaultVoicePreset?: string }
+export async function getCompanions(): Promise<{ companions: Companion[]; activeId: string }> {
+  try {
+  const r = await fetch('/api/companions'); return r.ok ? r.json() : { companions: [], activeId: 'nib' };
+  } catch { return { companions: [], activeId: 'nib' }; }
+}
+export async function getCompanion(): Promise<Companion | null> {
+  try {
+  const r = await fetch('/api/companion'); return r.ok ? r.json() : null;
+  } catch { return null; }
+}
+export async function setCompanion(body: { id?: string; voicePreset?: string | null }): Promise<Companion | null> {
+  try {
+  const r = await fetch('/api/companion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return r.ok ? r.json() : null;
+  } catch { return null; }
+}
+export interface VoicePreset { id: string; voice: string; description: string; gender: 'Male' | 'Female' }
+export async function getVoices(): Promise<{ presets: VoicePreset[] }> {
+  try {
+  const r = await fetch('/api/audio/voices'); return r.ok ? r.json() : { presets: [] };
+  } catch { return { presets: [] }; }
+}
+// /api/audio/generate returns the TTSResult ({success, file, filename, ...}) with no `url`;
+// the file is served at /api/audio/file/:filename.
+export async function speak(text: string, voice?: string): Promise<string | null> {
+  try {
+  const r = await fetch('/api/audio/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: text.slice(0, 8000), ...(voice ? { voice } : {}) }) });
+  if (!r.ok) return null;
+  const j = await r.json();
+  return j.url || (j.filename ? `/api/audio/file/${encodeURIComponent(j.filename)}` : null);
+  } catch { return null; }
+}
+export async function transcribe(blob: Blob): Promise<string> {
+  const fd = new FormData(); fd.append('audio', blob, 'note.webm');
+  const r = await fetch('/api/audio/transcribe', { method: 'POST', body: fd });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j.text || '';
+}
+export async function getVaultKeys(): Promise<string[]> {
+  try {
+  const r = await fetch('/api/vault/keys'); if (!r.ok) return []; return (await r.json()).keys || [];
+  } catch { return []; }
+}
+export async function saveVaultKey(key: string, value: string): Promise<{ ok: boolean; warning?: string }> {
+  try {
+  const r = await fetch('/api/vault', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key, value }) });
+  const j = await r.json().catch(() => ({})); return { ok: r.ok, warning: j.warning };
+  } catch { return { ok: false, warning: 'Network error' }; }
+}
+export async function deleteVaultKey(key: string): Promise<boolean> {
+  try {
+  const r = await fetch(`/api/vault/${encodeURIComponent(key)}`, { method: 'DELETE' }); return r.ok;
+  } catch { return false; }
+}
+export async function refreshProviders(): Promise<Array<{ id: string; name: string; model: string; tier: string }>> {
+  try {
+  const r = await fetch('/api/providers/refresh', { method: 'POST' }); if (!r.ok) return []; return (await r.json()).providers || [];
+  } catch { return []; }
+}
+export async function getModels(): Promise<any[]> {
+  try {
+  const r = await fetch('/api/models'); if (!r.ok) return []; return (await r.json()).providers || [];
+  } catch { return []; }
+}
+export async function setModel(provider: string, model: string): Promise<boolean> {
+  try {
+  const r = await fetch('/api/models', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider, model }) }); return r.ok;
+  } catch { return false; }
+}

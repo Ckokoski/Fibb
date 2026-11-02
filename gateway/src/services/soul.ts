@@ -26,7 +26,7 @@ export class SoulService {
       this.personality = await readFile(soulPath, 'utf-8');
       // Extract name from first heading
       const nameMatch = this.personality.match(/^#\s+(.+)/m);
-      if (nameMatch) this.name = nameMatch[1].trim();
+      if (nameMatch && !nameMatch[1].includes('{{')) this.name = nameMatch[1].trim();
     }
 
     // Load optional personality override (e.g., snarky, formal, etc.)
@@ -47,6 +47,11 @@ export class SoulService {
     if (existsSync(voicePath)) {
       this.voiceProfile = await readFile(voicePath, 'utf-8');
     }
+  }
+
+  /** Render the soul text with the companion name substituted for {{name}}. */
+  getFullContextFor(name: string): string {
+    return this.getFullContext().replace(/\{\{\s*name\s*\}\}/g, name);
   }
 
   getName(): string {

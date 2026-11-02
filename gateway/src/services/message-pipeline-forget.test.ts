@@ -15,7 +15,8 @@ function makeDeps(calls: any) {
       forget: async (p: string) => { calls.forget.push(p); return 1; },
       extractFromTurn: async (...a: any[]) => { calls.extract.push(a); },
     },
-    soul: { getFullContext: () => 'SOUL' },
+    companion: { getActive: () => ({ id: 'nib', name: 'Nib', voicePreset: 'narrator_warm', tagline: 't', image: '/mascots/nib.webp' }), getVoicePreset: () => 'narrator_warm' },
+    soul: { getFullContext: () => 'SOUL', getFullContextFor: () => 'SOUL' },
     memory: {
       getRelevant: async () => '', getActiveProject: async () => null, getActiveProjectId: () => null,
       getActivePersonaId: () => null, process: async () => {},

@@ -6,7 +6,12 @@
 import { Request, Response } from 'express';
 import type { ApiContext } from '../context.js';
 import path from 'path';
+import multer from 'multer';
 import { safePath } from '../context.js';
+
+// Dedicated memory-storage uploader for audio clips: the shared manuscript
+// `upload` rejects non-.txt/.md/.docx names. 10 MB cap, no extension filter.
+const audioUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 export function registerAudioRoutes(ctx: ApiContext): void {
   const { app, gateway, services, baseDir } = ctx;
@@ -64,7 +69,7 @@ export function registerAudioRoutes(ctx: ApiContext): void {
     });
 
     const result = await services.tts.generate(text, {
-      voice: resolved.voice,
+      voice: resolved.voice ?? services.companion?.getVoicePreset(),
       provider: provider || resolved.provider,
       rate, pitch, volume,
       elevenLabsModel,
@@ -73,6 +78,25 @@ export function registerAudioRoutes(ctx: ApiContext): void {
       res.json(result);
     } else {
       res.status(500).json(result);
+    }
+  });
+
+  // Transcribe an uploaded audio clip (multer memory storage, field "audio").
+  app.post('/api/audio/transcribe', (req: Request, res: Response, next: any) => audioUpload.single('audio')(req, res, (err: any) => {
+    if (err?.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ error: 'Audio too large (max 10 MB)' });
+    if (err) return res.status(400).json({ error: String(err.message || err) });
+    next();
+  }), async (req: Request, res: Response) => {
+    const file = (req as any).file as { buffer: Buffer; mimetype: string; size: number } | undefined;
+    if (!file?.buffer?.length) return res.status(400).json({ error: 'audio file required (multipart field "audio")' });
+    const mt = file.mimetype || '';
+    if (!(mt.startsWith('audio/') || mt === 'video/webm' || mt === 'application/octet-stream')) return res.status(415).json({ error: 'Unsupported media type: ' + mt });
+    try {
+      const out = await services.transcribe.transcribe(file.buffer, file.mimetype || 'audio/webm');
+      res.json(out);
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      res.status(msg.includes('No transcription provider') ? 503 : 500).json({ error: msg });
     }
   });
 

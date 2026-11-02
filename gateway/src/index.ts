@@ -57,6 +57,8 @@ import { LessonStore } from './services/lessons.js';
 import { PreferenceStore } from './services/preferences.js';
 import { ChatHistoryStore } from './services/chat-history.js';
 import { FactsStore } from './services/facts.js';
+import { CompanionService } from './services/companion.js';
+import { TranscribeService } from './services/transcribe.js';
 import { KDPExporter } from './services/kdp-exporter.js';
 import { BetaReaderService } from './services/beta-reader.js';
 import { DialogueAuditor } from './services/dialogue-auditor.js';
@@ -185,6 +187,10 @@ class FibbGateway {
   private set chatHistory(v: ChatHistoryStore) { this.services.chatHistory = v; }
   private get facts(): FactsStore { return this.services.facts; }
   private set facts(v: FactsStore) { this.services.facts = v; }
+  private get companion(): CompanionService { return this.services.companion; }
+  private set companion(v: CompanionService) { this.services.companion = v; }
+  private get transcribe(): TranscribeService { return this.services.transcribe; }
+  private set transcribe(v: TranscribeService) { this.services.transcribe = v; }
   private get kdpExporter(): KDPExporter { return this.services.kdpExporter; }
   private set kdpExporter(v: KDPExporter) { this.services.kdpExporter = v; }
   private get betaReader(): BetaReaderService { return this.services.betaReader; }
@@ -469,6 +475,11 @@ class FibbGateway {
     this.chatHistory = new ChatHistoryStore(join(ROOT_DIR, 'workspace', 'memory'));
     this.facts = new FactsStore(join(ROOT_DIR, 'workspace', 'memory'));
     await this.facts.initialize();
+    this.companion = new CompanionService(join(ROOT_DIR, 'workspace'));
+    await this.companion.initialize();
+    this.transcribe = new TranscribeService(this.vault, {
+      geminiModel: () => this.aiRouter.getProviderModelInfo().find(p => p.id === 'gemini')?.currentModel ?? 'gemini-2.0-flash',
+    });
 
     // ── Phase 6g2: User Model (Honcho-style dialectic, simplified) ──
     // Tracks behavioral observations + per-persona breakdown + periodically
@@ -942,6 +953,8 @@ class FibbGateway {
           this.handleMessage(content, channel, respond, extra, task, provider, onChunk)
         );
         this.telegram.setCommandHandlers(commandHandlers);
+        this.telegram.setTranscriber((b, m) => this.transcribe.transcribe(b, m).then(r => r.text));
+        this.telegram.setCompanionVoice(() => this.companion.getVoicePreset());
         await this.telegram.connect();
         logger.info('  ✓ Telegram bridge connected (command center mode)');
       } else {
@@ -1688,6 +1701,8 @@ class FibbGateway {
         this.handleMessage(content, channel, respond, extra, task, provider, onChunk)
       );
       this.telegram.setCommandHandlers(this.buildTelegramCommandHandlers());
+      this.telegram.setTranscriber((b, m) => this.transcribe.transcribe(b, m).then(r => r.text));
+      this.telegram.setCompanionVoice(() => this.companion.getVoicePreset());
       await this.telegram.connect();
       this.audit.log('bridge', 'telegram_connected', {});
       this.activityLog.log({

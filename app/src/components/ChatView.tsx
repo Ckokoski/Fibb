@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { streamChat } from '../lib/api';
+import { streamChat, speak } from '../lib/api';
+import { startListening, stopPlayback, playUrl, micSupported, type Listener } from '../lib/voice';
 import { Message, type ChatMessage } from './Message';
 import { Composer } from './Composer';
 import { FirstRunCard } from './FirstRunCard';
+import { CompanionPicker } from './CompanionPicker';
+import type { Companion } from '../lib/api';
 
 const STORE = 'fibb_chat_webchat';
-const GREETING = "Hi, I'm Fibb. I'm your writing partner: I keep your book straight, draft when you want me to, and work on it while you sleep. What's your name, and what are you working on?";
+const greeting = (name: string) => `Hi, I'm ${name}. I'm your writing partner inside Fibb: I keep your book straight, draft when you want me to, and work on it while you sleep. What's your name, and what are you working on?`;
 
 function load(): ChatMessage[] {
   try {
@@ -20,21 +23,55 @@ function load(): ChatMessage[] {
       }
     }
   } catch { /* ignore */ }
-  return [{ id: 'greet', role: 'assistant', content: GREETING }];
+  return [{ id: 'greet', role: 'assistant', content: greeting('Fibb') }];
 }
 
-export function ChatView({ onTurn, active }: { onTurn: () => void; active: boolean }) {
+export function ChatView({ onTurn, active, companionName, readAloud, handsFree, voicePreset, onboarding, onPicked, onBusy, onListening, onOpenTonight }: {
+  onTurn: () => void; active: boolean; companionName: string; readAloud: boolean; handsFree: boolean; voicePreset?: string;
+  onboarding: boolean; onPicked: (c: Companion) => void; onBusy: (b: boolean) => void; onListening: (b: boolean) => void; onOpenTonight: () => void;
+}) {
   const [msgs, setMsgs] = useState<ChatMessage[]>(load);
   const [busy, setBusy] = useState(false);
   const [needsProvider, setNeedsProvider] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [interim, setInterim] = useState('');
+  const listenerRef = useRef<Listener | null>(null);
+  const [speaking, setSpeaking] = useState(false);
+  const speakTokenRef = useRef(0);
   const endRef = useRef<HTMLDivElement>(null);
+  const settingsRef = useRef({ readAloud, handsFree, voicePreset });
+  const sendRef = useRef<(t: string, spoken?: boolean) => Promise<void>>(async () => {});
+  const toggleMicRef = useRef<() => void>(() => {});
+  useEffect(() => { settingsRef.current = { readAloud, handsFree, voicePreset }; });
 
   useEffect(() => { try { localStorage.setItem(STORE, JSON.stringify(msgs.slice(-200))); } catch { /* ignore */ } }, [msgs]);
   const lastLen = msgs[msgs.length - 1]?.content.length ?? 0;
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs.length, lastLen, busy]);
   useEffect(() => { if (active) endRef.current?.scrollIntoView(); }, [active]);
+  useEffect(() => { onListening(listening); }, [listening, onListening]);
+  useEffect(() => { onBusy(busy || speaking); }, [busy, speaking, onBusy]);
+  useEffect(() => () => { listenerRef.current?.stop(); stopPlayback(); }, []);
 
-  const send = async (text: string) => {
+  const toggleMic = () => {
+    // Use the ref (not `listening` state) so a call from a stale closure still toggles correctly.
+    if (listenerRef.current) { listenerRef.current.stop(); listenerRef.current = null; setListening(false); return; }
+    stopPlayback(); setListening(true); setInterim('');
+    listenerRef.current = startListening(
+      setInterim,
+      (final) => { setListening(false); setInterim(''); listenerRef.current = null; if (final.trim()) void sendRef.current(final.trim(), true); },
+      (msg) => { setListening(false); setInterim(''); listenerRef.current = null; setMsgs(m => [...m, { id: crypto.randomUUID(), role: 'assistant', content: `Mic problem: ${msg}` }]); },
+    );
+  };
+  toggleMicRef.current = toggleMic;
+
+  const readOut = async (t: string) => {
+    try {
+      const u = await speak(t, settingsRef.current.voicePreset);
+      if (u && !listenerRef.current) await playUrl(u);
+    } catch { /* ignore audio errors */ }
+  };
+
+  const send = async (text: string, spoken = false) => {
     const uid = crypto.randomUUID();
     const aid = crypto.randomUUID();
     setMsgs(m => [...m, { id: uid, role: 'user', content: text }, { id: aid, role: 'assistant', content: '', streaming: true }]);
@@ -50,31 +87,57 @@ export function ChatView({ onTurn, active }: { onTurn: () => void; active: boole
         }
       }
     } catch {
-      setMsgs(m => m.map(x => x.id === aid ? { ...x, content: x.content || 'Fibb could not reach the server. Is it running?', streaming: false } : x));
+      setMsgs(m => m.map(x => x.id === aid ? { ...x, content: x.content || `${companionName} could not reach the server. Is it running?`, streaming: false } : x));
     } finally {
       setBusy(false);
       onTurn();
     }
+    // Spoken reply runs after the composer is free; audio never blocks it.
+    const st = settingsRef.current;
+    if ((st.readAloud || spoken) && acc) {
+      const tok = ++speakTokenRef.current;
+      setSpeaking(true);
+      try {
+        const url = await speak(acc, st.voicePreset);
+        if (url && !listenerRef.current) {
+          const natural = await playUrl(url);
+          if (natural && settingsRef.current.handsFree && spoken && !listenerRef.current) toggleMicRef.current();
+        }
+      } catch { /* ignore audio errors */ }
+      finally { if (speakTokenRef.current === tok) setSpeaking(false); }
+    }
   };
+  sendRef.current = send;
 
+  const READ_BACK = 'Read that back to me';
   const chips = msgs.length <= 1
     ? ["I'm working on a novel", 'Help me find a premise', "What can you do?"]
-    : ['Check the last chapter', "What's on tonight?", 'Brainstorm a scene'];
+    : ['Check the last chapter', "What's on tonight?", 'Brainstorm a scene', READ_BACK];
+  const lastReply = [...msgs].reverse().find(m => m.role === 'assistant' && m.content && !m.streaming);
+  const onChip = (c: string) => { if (c === READ_BACK) { if (lastReply) void readOut(lastReply.content); } else send(c); };
 
   return (
     <>
       <div className="thread">
         <div className="thread-inner">
+          {onboarding && (
+            <div className="card" role="region" aria-label="Choose your companion">
+              <div className="t">Who do you want to write with?</div>
+              <div className="s">Pick a companion. You can change this any time in Settings.</div>
+              <CompanionPicker onPicked={onPicked} />
+            </div>
+          )}
           <div className="day">Today</div>
-          {msgs.map(m => <Message key={m.id} m={m} />)}
+          {msgs.map(m => <Message key={m.id} m={m.id === 'greet' ? { ...m, content: greeting(companionName) } : m} onRead={t => { void readOut(t); }} />)}
           {needsProvider && <FirstRunCard onDone={() => { setNeedsProvider(false); send('Thanks, you’re connected now. Say hi?'); }} />}
           <div ref={endRef} />
         </div>
       </div>
       <div className="chips">
-        {chips.map(c => <button key={c} className="chip" onClick={() => send(c)} disabled={busy}>{c}</button>)}
+        <button className="chip tonight" onClick={onOpenTonight}>Tonight</button>
+        {chips.map(c => <button key={c} className="chip" onClick={() => onChip(c)} disabled={busy}>{c}</button>)}
       </div>
-      <Composer onSend={send} disabled={busy} />
+      <Composer onSend={t => send(t)} disabled={busy} listening={listening} interim={interim} onMic={toggleMic} micAvailable={micSupported()} micDisabled={busy} />
     </>
   );
 }

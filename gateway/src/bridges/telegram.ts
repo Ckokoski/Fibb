@@ -4,6 +4,9 @@
  * Users give orders via Telegram, Fibb executes in the VM
  */
 
+import { TTSService } from '../services/tts.js';
+import { logger } from '../services/logger.js';
+
 interface TelegramConfig {
   allowedUsers: string[];
   pairingEnabled: boolean;
@@ -42,6 +45,9 @@ export class TelegramBridge {
   private knownChatIds: Set<number> = new Set(); // Track chat IDs for broadcasting
   private lastFileList: string[] = []; // For /read # file picker
   private voiceMode: Map<number, string | boolean> = new Map(); // chatId → voice preset or false
+  private transcriber: ((a: Buffer, m: string) => Promise<string>) | null = null;
+  private companionVoice: (() => string) | null = null;
+  private voiceTurn = new Set<number>(); // chats whose current turn started as a voice note
   private lastResponse: Map<number, string> = new Map(); // chatId → last AI response for "read that back"
 
   constructor(token: string, config: Partial<TelegramConfig>) {
@@ -101,7 +107,8 @@ export class TelegramBridge {
       for (const update of data.result || []) {
         this.lastUpdateId = update.update_id;
         const message = update.message;
-        if (!message?.text) continue;
+        if (!message) continue;
+        if (!message.text && !message.voice && !message.audio) continue;
 
         const userId = String(message.from.id);
         const chatId = message.chat.id;
@@ -117,12 +124,48 @@ export class TelegramBridge {
         // Track chat ID for broadcasting (only for allowed users)
         this.knownChatIds.add(chatId);
 
+        if (message.voice || message.audio) {
+          await this.handleVoiceNote(chatId, message.voice ?? message.audio, userName);
+          continue;
+        }
+
         // Route to appropriate handler
         await this.handleInput(chatId, message.text, userName);
       }
     } catch (error: any) {
       if (error?.name === 'AbortError') return; // Normal timeout, just retry
       console.error('Telegram poll error:', error);
+    }
+  }
+
+  setTranscriber(fn: (audio: Buffer, mime: string) => Promise<string>): void { this.transcriber = fn; }
+  setCompanionVoice(fn: () => string): void { this.companionVoice = fn; }
+
+  private async handleVoiceNote(chatId: number, media: { file_id: string; mime_type?: string; duration?: number; file_size?: number }, userName: string): Promise<void> {
+    if (!this.transcriber) { await this.sendMessage(chatId, 'I can hear you, but speech-to-text is not set up yet. Add a free Gemini key in Settings → Connections.'); return; }
+    if ((media.duration ?? 0) > 180) { await this.sendMessage(chatId, 'That voice note is over 3 minutes. Send a shorter one and I will transcribe it.'); return; }
+    const MAX = 10 * 1024 * 1024;
+    if (typeof media.file_size === 'number' && media.file_size > MAX) { await this.sendMessage(chatId, 'That voice note is too large (over 10 MB).'); return; }
+    await this.sendChatAction(chatId, 'typing');
+    try {
+      const meta = await fetch(`https://api.telegram.org/bot${this.token}/getFile?file_id=${encodeURIComponent(media.file_id)}`).then(r => r.json()) as any;
+      const path = meta?.result?.file_path;
+      if (!path) throw new Error('getFile returned no path');
+      const fileRes = await fetch(`https://api.telegram.org/file/bot${this.token}/${path}`);
+      if (!fileRes.ok) throw new Error(`file download failed (HTTP ${fileRes.status})`);
+      const buf = Buffer.from(await fileRes.arrayBuffer());
+      if (buf.length > MAX) { await this.sendMessage(chatId, 'That voice note is too large (over 10 MB).'); return; }
+      const text = await this.transcriber(buf, media.mime_type || 'audio/ogg');
+      this.voiceTurn.add(chatId);
+      await this.handleInput(chatId, `[voice note] ${text}`, userName);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn('telegram voice note failed', msg);
+      await this.sendMessage(chatId, /No transcription provider/i.test(msg)
+        ? "I can hear you, but speech-to-text isn't set up yet. Add a free Gemini key in Settings → Connections (or set AUTHORAGENT_WHISPER_PATH) and try again."
+        : 'I could not transcribe that voice note. Try again or type it out.');
+    } finally {
+      this.voiceTurn.delete(chatId);
     }
   }
 
@@ -479,7 +522,8 @@ export class TelegramBridge {
     // ── /voice — Toggle voice responses for chat messages ──
     if (text.startsWith('/voice')) {
       const args = text.replace(/^\/voice\s*/, '').trim().toLowerCase();
-      const voicePresets = ['narrator_female', 'narrator_male', 'narrator_deep', 'narrator_warm', 'british_male', 'british_female', 'storyteller'];
+      const voicePresets = Object.keys(TTSService.VOICE_PRESETS);
+      const byGender = (g: string) => Object.entries(TTSService.VOICE_PRESETS).filter(([, p]) => p.gender === g).map(([k]) => k).join(', ');
 
       if (args === 'off' || args === 'stop' || args === 'disable') {
         this.voiceMode.delete(chatId);
@@ -496,7 +540,7 @@ export class TelegramBridge {
           `/voice on — Enable voice responses\n` +
           `/voice off — Disable voice responses\n` +
           `/voice narrator_deep — Use a specific voice\n\n` +
-          `*Voices:* ${voicePresets.join(', ')}`);
+          `*Female:* ${byGender('Female')}\n*Male:* ${byGender('Male')}`);
       }
       return;
     }
@@ -636,6 +680,11 @@ export class TelegramBridge {
 
 ${text}`;
       await this.sendChatAction(chatId, 'typing');
+      // Capture voice intent synchronously: voiceTurn is cleared once handleVoiceNote returns,
+      // but the respond callback fires later.
+      const wantVoice = this.voiceMode.has(chatId) || this.voiceTurn.has(chatId);
+      const modePreset = this.voiceMode.get(chatId);
+      const voicePreset = typeof modePreset === 'string' ? modePreset : (this.companionVoice?.() ?? undefined);
 
       let draftId: number | undefined;
       let buffer = '';
@@ -675,8 +724,8 @@ ${text}`;
             if (response.length > 4000) await this.sendMessage(chatId, response.slice(4000));
           }
           this.lastResponse.set(chatId, response);
-          if (this.voiceMode.has(chatId)) {
-            await this.generateAndSendVoice(chatId, response, this.voiceMode.get(chatId));
+          if (wantVoice) {
+            await this.generateAndSendVoice(chatId, response, voicePreset);
           }
         },
         undefined, undefined, undefined,
