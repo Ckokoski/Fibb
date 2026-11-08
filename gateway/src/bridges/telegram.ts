@@ -1,11 +1,8 @@
 /**
- * Fibb Telegram Bridge
+ * AuthorAgent Telegram Bridge
  * Secure Telegram bot integration — acts as a command center
- * Users give orders via Telegram, Fibb executes in the VM
+ * Users give orders via Telegram, AuthorAgent executes in the VM
  */
-
-import { TTSService } from '../services/tts.js';
-import { logger } from '../services/logger.js';
 
 interface TelegramConfig {
   allowedUsers: string[];
@@ -19,11 +16,7 @@ interface CommandHandlers {
   autoRunProject: (projectId: string, statusCallback: (msg: string) => Promise<void>) => Promise<void>;
   listProjects: () => Array<{ id: string; title: string; status: string; progress: string }>;
   saveToFile: (filename: string, content: string) => Promise<void>;
-  handleMessage: (
-    content: string, channel: string, respond: (text: string) => void,
-    extraContext?: string, overrideTaskType?: string, preferredProvider?: string,
-    onChunk?: (chunk: string) => void,
-  ) => Promise<void>;
+  handleMessage: (content: string, channel: string, respond: (text: string) => void) => Promise<void>;
   research: (query: string) => Promise<{ results: string; error?: string }>;
   listFiles: (subdir?: string) => Promise<string[]>;
   readFile: (filename: string) => Promise<{ content: string; error?: string }>;
@@ -34,20 +27,13 @@ export class TelegramBridge {
   private config: TelegramConfig;
   private pollingInterval: ReturnType<typeof setInterval> | null = null; // Legacy compat
   private polling = false;
-  private messageHandler?: (
-    content: string, channel: string, respond: (text: string) => void,
-    extraContext?: string, overrideTaskType?: string, preferredProvider?: string,
-    onChunk?: (chunk: string) => void,
-  ) => Promise<void>;
+  private messageHandler?: (content: string, channel: string, respond: (text: string) => void) => Promise<void>;
   private commandHandlers?: CommandHandlers;
   private lastUpdateId = 0;
   public pauseRequested = false;
   private knownChatIds: Set<number> = new Set(); // Track chat IDs for broadcasting
   private lastFileList: string[] = []; // For /read # file picker
   private voiceMode: Map<number, string | boolean> = new Map(); // chatId → voice preset or false
-  private transcriber: ((a: Buffer, m: string) => Promise<string>) | null = null;
-  private companionVoice: (() => string) | null = null;
-  private voiceTurn = new Set<number>(); // chats whose current turn started as a voice note
   private lastResponse: Map<number, string> = new Map(); // chatId → last AI response for "read that back"
 
   constructor(token: string, config: Partial<TelegramConfig>) {
@@ -58,11 +44,7 @@ export class TelegramBridge {
     };
   }
 
-  onMessage(handler: (
-    content: string, channel: string, respond: (text: string) => void,
-    extraContext?: string, overrideTaskType?: string, preferredProvider?: string,
-    onChunk?: (chunk: string) => void,
-  ) => Promise<void>) {
+  onMessage(handler: (content: string, channel: string, respond: (text: string) => void) => Promise<void>) {
     this.messageHandler = handler;
   }
 
@@ -107,8 +89,7 @@ export class TelegramBridge {
       for (const update of data.result || []) {
         this.lastUpdateId = update.update_id;
         const message = update.message;
-        if (!message) continue;
-        if (!message.text && !message.voice && !message.audio) continue;
+        if (!message?.text) continue;
 
         const userId = String(message.from.id);
         const chatId = message.chat.id;
@@ -124,11 +105,6 @@ export class TelegramBridge {
         // Track chat ID for broadcasting (only for allowed users)
         this.knownChatIds.add(chatId);
 
-        if (message.voice || message.audio) {
-          await this.handleVoiceNote(chatId, message.voice ?? message.audio, userName);
-          continue;
-        }
-
         // Route to appropriate handler
         await this.handleInput(chatId, message.text, userName);
       }
@@ -138,43 +114,12 @@ export class TelegramBridge {
     }
   }
 
-  setTranscriber(fn: (audio: Buffer, mime: string) => Promise<string>): void { this.transcriber = fn; }
-  setCompanionVoice(fn: () => string): void { this.companionVoice = fn; }
-
-  private async handleVoiceNote(chatId: number, media: { file_id: string; mime_type?: string; duration?: number; file_size?: number }, userName: string): Promise<void> {
-    if (!this.transcriber) { await this.sendMessage(chatId, 'I can hear you, but speech-to-text is not set up yet. Add a free Gemini key in Settings → Connections.'); return; }
-    if ((media.duration ?? 0) > 180) { await this.sendMessage(chatId, 'That voice note is over 3 minutes. Send a shorter one and I will transcribe it.'); return; }
-    const MAX = 10 * 1024 * 1024;
-    if (typeof media.file_size === 'number' && media.file_size > MAX) { await this.sendMessage(chatId, 'That voice note is too large (over 10 MB).'); return; }
-    await this.sendChatAction(chatId, 'typing');
-    try {
-      const meta = await fetch(`https://api.telegram.org/bot${this.token}/getFile?file_id=${encodeURIComponent(media.file_id)}`).then(r => r.json()) as any;
-      const path = meta?.result?.file_path;
-      if (!path) throw new Error('getFile returned no path');
-      const fileRes = await fetch(`https://api.telegram.org/file/bot${this.token}/${path}`);
-      if (!fileRes.ok) throw new Error(`file download failed (HTTP ${fileRes.status})`);
-      const buf = Buffer.from(await fileRes.arrayBuffer());
-      if (buf.length > MAX) { await this.sendMessage(chatId, 'That voice note is too large (over 10 MB).'); return; }
-      const text = await this.transcriber(buf, media.mime_type || 'audio/ogg');
-      this.voiceTurn.add(chatId);
-      await this.handleInput(chatId, `[voice note] ${text}`, userName);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      logger.warn('telegram voice note failed', msg);
-      await this.sendMessage(chatId, /No transcription provider/i.test(msg)
-        ? "I can hear you, but speech-to-text isn't set up yet. Add a free Gemini key in Settings → Connections (or set AUTHORAGENT_WHISPER_PATH) and try again."
-        : 'I could not transcribe that voice note. Try again or type it out.');
-    } finally {
-      this.voiceTurn.delete(chatId);
-    }
-  }
-
   private async handleInput(chatId: number, text: string, userName: string): Promise<void> {
 
     // ── /start and /help ──
     if (text.startsWith('/start') || text.startsWith('/help')) {
       await this.sendMessage(chatId,
-        `✍️ Hey ${userName}! I'm Fibb.\n\n` +
+        `✍️ Hey ${userName}! I'm AuthorAgent.\n\n` +
         `Tell me what to do and I'll figure out the steps.\n\n` +
         `*Commands:*\n` +
         `/novel [idea] — Start a full novel pipeline\n` +
@@ -522,8 +467,7 @@ export class TelegramBridge {
     // ── /voice — Toggle voice responses for chat messages ──
     if (text.startsWith('/voice')) {
       const args = text.replace(/^\/voice\s*/, '').trim().toLowerCase();
-      const voicePresets = Object.keys(TTSService.VOICE_PRESETS);
-      const byGender = (g: string) => Object.entries(TTSService.VOICE_PRESETS).filter(([, p]) => p.gender === g).map(([k]) => k).join(', ');
+      const voicePresets = ['narrator_female', 'narrator_male', 'narrator_deep', 'narrator_warm', 'british_male', 'british_female', 'storyteller', 'dramatic'];
 
       if (args === 'off' || args === 'stop' || args === 'disable') {
         this.voiceMode.delete(chatId);
@@ -540,7 +484,7 @@ export class TelegramBridge {
           `/voice on — Enable voice responses\n` +
           `/voice off — Disable voice responses\n` +
           `/voice narrator_deep — Use a specific voice\n\n` +
-          `*Female:* ${byGender('Female')}\n*Male:* ${byGender('Male')}`);
+          `*Voices:* ${voicePresets.join(', ')}`);
       }
       return;
     }
@@ -551,17 +495,17 @@ export class TelegramBridge {
       if (!args) {
         await this.sendMessage(chatId,
           `🔊 *Voice Messages:*\n\n` +
-          `/speak Hello, I am Fibb\n` +
+          `/speak Hello, I am AuthorAgent\n` +
           `/speak narrator_deep In a world...\n` +
           `/speak 3 — Read file #3 aloud\n\n` +
-          `*Voices:* narrator_female, narrator_male, narrator_deep, narrator_warm, british_male, british_female, storyteller`);
+          `*Voices:* narrator_female, narrator_male, narrator_deep, narrator_warm, british_male, british_female, storyteller, dramatic`);
         return;
       }
 
       try {
         // Parse: optional voice preset as first word, then text (or file number)
         const words = args.split(/\s+/);
-        const voicePresets = ['narrator_female', 'narrator_male', 'narrator_deep', 'narrator_warm', 'british_male', 'british_female', 'storyteller'];
+        const voicePresets = ['narrator_female', 'narrator_male', 'narrator_deep', 'narrator_warm', 'british_male', 'british_female', 'storyteller', 'dramatic'];
         let voice: string | undefined;
         let speakText = args;
 
@@ -674,98 +618,27 @@ export class TelegramBridge {
       return;
     }
 
-    // ── Regular message — conversational chat via AI (streamed into one edited message) ──
+    // ── Regular message — conversational chat via AI ──
     if (this.messageHandler) {
-      const telegramPrompt = `[Telegram chat — keep your response SHORT and conversational, like texting a friend. 2-4 sentences max. No headers, no bullet lists, no essays. Only write long responses if the user explicitly asks for a full chapter, story, or detailed breakdown.]
-
-${text}`;
-      await this.sendChatAction(chatId, 'typing');
-      // Capture voice intent synchronously: voiceTurn is cleared once handleVoiceNote returns,
-      // but the respond callback fires later.
-      const wantVoice = this.voiceMode.has(chatId) || this.voiceTurn.has(chatId);
-      const modePreset = this.voiceMode.get(chatId);
-      const voicePreset = typeof modePreset === 'string' ? modePreset : (this.companionVoice?.() ?? undefined);
-
-      let draftId: number | undefined;
-      let buffer = '';
-      let lastEdit = 0;
-      let editTimer: NodeJS.Timeout | null = null;
-      let done = false;
-      let flushPromise: Promise<void> = Promise.resolve();
-      const flush = async () => {
-        if (done || !buffer.trim()) return;
-        lastEdit = Date.now();
-        const shown = buffer.length > 4000 ? buffer.slice(0, 4000) + '…' : buffer;
-        if (draftId === undefined) draftId = await this.sendPlain(chatId, shown);
-        else await this.editPlain(chatId, draftId, shown);
-        lastEdit = Date.now();
-      };
-      const onChunk = (chunk: string) => {
-        if (done) return;
-        buffer += chunk;
-        if (Date.now() - lastEdit > 1000 && !editTimer) {
-          editTimer = setTimeout(() => { editTimer = null; flushPromise = flushPromise.then(() => flush()).catch(() => {}); }, 50);
-        }
-      };
-
+      // Prepend brevity instruction so AI keeps it short for Telegram
+      const telegramPrompt = `[Telegram chat — keep your response SHORT and conversational, like texting a friend. 2-4 sentences max. No headers, no bullet lists, no essays. Only write long responses if the user explicitly asks for a full chapter, story, or detailed breakdown.]\n\n${text}`;
       await this.messageHandler(
         telegramPrompt,
         `telegram:${chatId}`,
         async (response) => {
-          done = true;
-          if (editTimer) { clearTimeout(editTimer); editTimer = null; }
-          await flushPromise;
-          if (draftId !== undefined && response.length <= 4000) {
-            if (!(await this.editPlain(chatId, draftId, response))) await this.sendMessage(chatId, response);
-          } else {
-            if (draftId !== undefined) {
-              if (!(await this.editPlain(chatId, draftId, response.slice(0, 4000)))) await this.sendMessage(chatId, response.slice(0, 4000));
-            } else await this.sendMessage(chatId, response.slice(0, 4000));
-            if (response.length > 4000) await this.sendMessage(chatId, response.slice(4000));
-          }
+          // sendMessage auto-splits at 4096 chars (Telegram's real limit)
+          await this.sendMessage(chatId, response);
+
+          // Store last response for "read that back" requests
           this.lastResponse.set(chatId, response);
-          if (wantVoice) {
-            await this.generateAndSendVoice(chatId, response, voicePreset);
+
+          // Voice mode: also send as voice message
+          if (this.voiceMode.has(chatId)) {
+            await this.generateAndSendVoice(chatId, response, this.voiceMode.get(chatId));
           }
-        },
-        undefined, undefined, undefined,
-        onChunk,
+        }
       );
     }
-  }
-
-  private async sendChatAction(chatId: number, action: 'typing' | 'record_voice' = 'typing'): Promise<void> {
-    try {
-      await fetch(`https://api.telegram.org/bot${this.token}/sendChatAction`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, action }),
-      });
-    } catch { /* cosmetic */ }
-  }
-
-  /** Send a message and return its message_id (undefined on failure). Plain text, no parse_mode. */
-  private async sendPlain(chatId: number, text: string): Promise<number | undefined> {
-    try {
-      const r = await fetch(`https://api.telegram.org/bot${this.token}/sendMessage`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text }),
-      });
-      const data = await r.json() as any;
-      return data?.result?.message_id;
-    } catch { return undefined; }
-  }
-
-  /** Edit a message. True on success or "message is not modified"; false otherwise. */
-  private async editPlain(chatId: number, messageId: number, text: string): Promise<boolean> {
-    try {
-      const r = await fetch(`https://api.telegram.org/bot${this.token}/editMessageText`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, message_id: messageId, text }),
-      });
-      if (r.ok) return true;
-      const data = await r.json().catch(() => null) as any;
-      return String(data?.description || '').includes('message is not modified');
-    } catch { return false; }
   }
 
   private async sendMessage(chatId: number, text: string): Promise<void> {
@@ -805,15 +678,9 @@ ${text}`;
       const { basename } = await import('path');
       const audioData = readFileSync(filePath);
       const filename = basename(filePath);
-      const ext = filename.split('.').pop()?.toLowerCase();
-      const contentType = ext === 'wav' ? 'audio/wav' : ext === 'ogg' ? 'audio/ogg' : 'audio/mpeg';
-      // Telegram sendVoice rejects WAV; deliver it as a document instead.
-      const asDocument = ext === 'wav';
-      const field = asDocument ? 'document' : 'voice';
-      const endpoint = asDocument ? 'sendDocument' : 'sendVoice';
 
       // Build multipart form data manually (no external dependency)
-      const boundary = '----FibbVoice' + Date.now();
+      const boundary = '----AuthorAgentVoice' + Date.now();
       const parts: Buffer[] = [];
 
       // chat_id field
@@ -830,14 +697,14 @@ ${text}`;
 
       // audio file field
       parts.push(Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="${field}"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`
+        `--${boundary}\r\nContent-Disposition: form-data; name="voice"; filename="${filename}"\r\nContent-Type: audio/mpeg\r\n\r\n`
       ));
       parts.push(audioData);
       parts.push(Buffer.from(`\r\n--${boundary}--\r\n`));
 
       const body = Buffer.concat(parts);
 
-      const response = await fetch(`https://api.telegram.org/bot${this.token}/${endpoint}`, {
+      const response = await fetch(`https://api.telegram.org/bot${this.token}/sendVoice`, {
         method: 'POST',
         headers: {
           'Content-Type': `multipart/form-data; boundary=${boundary}`,
@@ -848,7 +715,6 @@ ${text}`;
 
       if (!response.ok) {
         console.error('Telegram sendVoice failed:', await response.text());
-        logger.warn(`telegram voice send failed (HTTP ${response.status})`);
         return false;
       }
       return true;
@@ -881,8 +747,7 @@ ${text}`;
       const ttsData = await ttsRes.json() as any;
 
       if (ttsData.success && ttsData.file) {
-        const ok = await this.sendVoice(chatId, ttsData.file);
-        if (!ok) logger.warn('telegram voice send failed');
+        await this.sendVoice(chatId, ttsData.file);
       }
     } catch (e) {
       // Voice generation failure is non-critical — don't spam the user

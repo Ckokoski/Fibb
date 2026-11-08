@@ -1,5 +1,5 @@
 /**
- * Fibb Soul Service
+ * AuthorAgent Soul Service
  * Loads and manages the three-part soul: personality, style guide, voice profile
  */
 
@@ -13,7 +13,7 @@ export class SoulService {
   private personalityOverride = '';
   private styleGuide = '';
   private voiceProfile = '';
-  private name = 'Fibb';
+  private name = 'AuthorAgent';
 
   constructor(soulDir: string) {
     this.soulDir = soulDir;
@@ -26,11 +26,11 @@ export class SoulService {
       this.personality = await readFile(soulPath, 'utf-8');
       // Extract name from first heading
       const nameMatch = this.personality.match(/^#\s+(.+)/m);
-      if (nameMatch && !nameMatch[1].includes('{{')) this.name = nameMatch[1].trim();
+      if (nameMatch) this.name = nameMatch[1].trim();
     }
 
     // Load optional personality override (e.g., snarky, formal, etc.)
-    // This file is user-created and NOT shipped with Fibb
+    // This file is user-created and NOT shipped with AuthorAgent
     const personalityPath = join(this.soulDir, 'PERSONALITY.md');
     if (existsSync(personalityPath)) {
       this.personalityOverride = await readFile(personalityPath, 'utf-8');
@@ -47,11 +47,6 @@ export class SoulService {
     if (existsSync(voicePath)) {
       this.voiceProfile = await readFile(voicePath, 'utf-8');
     }
-  }
-
-  /** Render the soul text with the companion name substituted for {{name}}. */
-  getFullContextFor(name: string): string {
-    return this.getFullContext().replace(/\{\{\s*name\s*\}\}/g, name);
   }
 
   getName(): string {
@@ -79,7 +74,7 @@ export class SoulService {
       context += '## Author Voice Profile\n\n' + this.voiceProfile + '\n\n';
     }
 
-    return context || 'You are Fibb, a warm, sharp writing partner for authors.';
+    return context || 'You are AuthorAgent, a helpful writing assistant for authors.';
   }
 
   async updateVoiceProfile(analysis: string): Promise<void> {

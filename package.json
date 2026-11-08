@@ -1,13 +1,10 @@
 {
-  "name": "fibb",
-  "version": "5.0.0",
-  "description": "Fibb — the AI writing partner for authors. Knows your book, works while you sleep, talks like a friend.",
+  "name": "authoragent",
+  "version": "4.0.0",
+  "description": "The Autonomous AI Writing Agent — 6 book production phases, author personas, pipeline mode, 21-step deep revision, KDP-ready export. Built for authors who scale.",
   "main": "gateway/src/index.ts",
   "type": "module",
   "scripts": {
-    "app:install": "cd app && npm install",
-    "app:dev": "cd app && npm run dev",
-    "app:build": "cd app && npm run build",
     "start": "node --import tsx gateway/src/index.ts",
     "dev": "node --watch --import tsx gateway/src/index.ts",
     "build": "tsc",
@@ -44,7 +41,6 @@
   "author": "Christopher Kokoski (Writing Secrets)",
   "license": "MIT",
   "dependencies": {
-    "@huggingface/transformers": "^3.8.1",
     "@types/multer": "^2.0.0",
     "adm-zip": "^0.6.1",
     "better-sqlite3": "^11.3.0",
@@ -53,9 +49,8 @@
     "dotenv": "^17.3.1",
     "express": "^4.21.0",
     "helmet": "^8.0.0",
-    "kokoro-js": "^1.2.1",
     "multer": "^2.1.0",
-    "node-edge-tts": "^1.2.12",
+    "node-edge-tts": "^1.2.10",
     "socket.io": "^4.7.0",
     "tsx": "^4.7.0"
   },
@@ -63,7 +58,6 @@
     "@types/adm-zip": "^0.5.7",
     "@types/cors": "^2.8.0",
     "@types/express": "^5.0.0",
-    "@types/multer": "^2.3.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"

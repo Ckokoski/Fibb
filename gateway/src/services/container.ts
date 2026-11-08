@@ -5,7 +5,7 @@
  * Extracted from gateway/src/index.ts as part of the Phase 2 god-file split
  * (Phase 2 final, step 1). Behavior-preserving: this file ONLY holds the
  * service field declarations and the getServices() projection that the former
- * FibbGateway inlined. Construction ORDER and all cross-service wiring
+ * AuthorAgentGateway inlined. Construction ORDER and all cross-service wiring
  * (setMessageHandler, setStepServices, setContextEngine, setGate, setAI,
  * bridges, hooks) stay in initialize() in index.ts, because those closures
  * reference gateway-only members (io, telegram, handleMessage, etc.) and the
@@ -41,19 +41,23 @@ import { MemoryTierService } from './memory-tier.js';
 import { SleepConsolidationService } from './sleep-consolidation.js';
 import { UserModelService } from './user-model.js';
 import { CronSchedulerService } from './cron-scheduler.js';
+import { AutoSkillService } from './auto-skill.js';
+import { SkillCuratorService } from './skill-curator.js';
+import { ReaderFeedbackService } from './reader-feedback.js';
 import { WritingJudgeService } from './writing-judge.js';
 import { ProseEvolverService } from './prose-evolver.js';
 import { ReaderPanelService } from './reader-panel.js';
 import { ResearchLookupService } from './research-lookup.js';
+import { VideoResearchService } from './video-research.js';
 import { StoryStructureService } from './story-structures.js';
 import { PlotPromisesService } from './plot-promises.js';
 import { CharacterVoicesService } from './character-voices.js';
+import { WebsiteSiteService } from './website-sites.js';
+import { BlogPostDrafterService } from './blog-post-drafter.js';
+import { WebsiteDeployService } from './website-deploy.js';
 import { LessonStore } from './lessons.js';
 import { PreferenceStore } from './preferences.js';
-import { ChatHistoryStore } from './chat-history.js';
-import { FactsStore } from './facts.js';
-import { CompanionService } from './companion.js';
-import { TranscribeService } from './transcribe.js';
+import { OrchestratorService } from './orchestrator.js';
 import { KDPExporter } from './kdp-exporter.js';
 import { BetaReaderService } from './beta-reader.js';
 import { DialogueAuditor } from './dialogue-auditor.js';
@@ -64,12 +68,21 @@ import { TrackChangesService } from './track-changes.js';
 import { GoalsService } from './goals.js';
 import { SeriesBibleService } from './series-bible.js';
 import { CraftCriticService } from './craft-critic.js';
+import { AudiobookPrepService } from './audiobook-prep.js';
 import { StyleCloneService } from './style-clone.js';
 import { ContradictionDetector } from './contradiction-detector.js';
 import { CharacterAgentService } from './character-agent.js';
 import { RevisionOrchestrator } from './revision-orchestrator.js';
 import { LearningService } from './learning.js';
 import { ConfirmationGateService } from './confirmation-gate.js';
+import { DisclosuresService } from './disclosures.js';
+import { LaunchOrchestratorService } from './launch-orchestrator.js';
+import { AMSAdsService } from './ams-ads.js';
+import { BookBubSubmitterService } from './bookbub-submitter.js';
+import { ReleaseCalendarService } from './release-calendar.js';
+import { ReaderIntelService } from './reader-intel.js';
+import { TranslationPipelineService } from './translation-pipeline.js';
+import { WebsiteBuilderService } from './website-builder.js';
 
 /**
  * Shape of the object the gateway's getServices() returns to the API routes.
@@ -97,19 +110,23 @@ export interface GatewayServices {
   sleepConsolidation: SleepConsolidationService;
   userModel: UserModelService;
   cronScheduler: CronSchedulerService;
+  autoSkill: AutoSkillService;
+  skillCurator: SkillCuratorService;
+  readerFeedback: ReaderFeedbackService;
   writingJudge: WritingJudgeService;
   proseEvolver: ProseEvolverService;
   readerPanel: ReaderPanelService;
   researchLookup: ResearchLookupService;
+  videoResearch: VideoResearchService;
   storyStructures: StoryStructureService;
   plotPromises: PlotPromisesService;
   characterVoices: CharacterVoicesService;
+  websiteSites: WebsiteSiteService;
+  blogPostDrafter: BlogPostDrafterService;
+  websiteDeploy: WebsiteDeployService;
   lessons: LessonStore;
   preferences: PreferenceStore;
-  chatHistory: ChatHistoryStore;
-  facts: FactsStore;
-  companion: CompanionService;
-  transcribe: TranscribeService;
+  orchestrator: OrchestratorService;
   kdpExporter: KDPExporter;
   betaReader: BetaReaderService;
   dialogueAuditor: DialogueAuditor;
@@ -120,12 +137,21 @@ export interface GatewayServices {
   goals: GoalsService;
   seriesBible: SeriesBibleService;
   craftCritic: CraftCriticService;
+  audiobookPrep: AudiobookPrepService;
   styleClone: StyleCloneService;
   contradictionDetector: ContradictionDetector;
   characterAgent: CharacterAgentService;
   revisionOrchestrator: RevisionOrchestrator;
   learning: LearningService;
   confirmationGate: ConfirmationGateService;
+  disclosures: DisclosuresService;
+  launchOrchestrator: LaunchOrchestratorService;
+  amsAds: AMSAdsService;
+  bookbub: BookBubSubmitterService;
+  releaseCalendar: ReleaseCalendarService;
+  readerIntel: ReaderIntelService;
+  translationPipeline: TranslationPipelineService;
+  websiteBuilder: WebsiteBuilderService;
 }
 
 /**
@@ -166,19 +192,23 @@ export class ServiceContainer {
   sleepConsolidation!: SleepConsolidationService;
   userModel!: UserModelService;
   cronScheduler!: CronSchedulerService;
+  autoSkill!: AutoSkillService;
+  skillCurator!: SkillCuratorService;
+  readerFeedback!: ReaderFeedbackService;
   writingJudge!: WritingJudgeService;
   proseEvolver!: ProseEvolverService;
   readerPanel!: ReaderPanelService;
   researchLookup!: ResearchLookupService;
+  videoResearch!: VideoResearchService;
   storyStructures!: StoryStructureService;
   plotPromises!: PlotPromisesService;
   characterVoices!: CharacterVoicesService;
+  websiteSites!: WebsiteSiteService;
+  blogPostDrafter!: BlogPostDrafterService;
+  websiteDeploy!: WebsiteDeployService;
   lessons!: LessonStore;
   preferences!: PreferenceStore;
-  chatHistory!: ChatHistoryStore;
-  facts!: FactsStore;
-  companion!: CompanionService;
-  transcribe!: TranscribeService;
+  orchestrator!: OrchestratorService;
   kdpExporter!: KDPExporter;
   betaReader!: BetaReaderService;
   dialogueAuditor!: DialogueAuditor;
@@ -189,12 +219,22 @@ export class ServiceContainer {
   goalsService!: GoalsService;
   seriesBible!: SeriesBibleService;
   craftCritic!: CraftCriticService;
+  audiobookPrep!: AudiobookPrepService;
   styleClone!: StyleCloneService;
   contradictionDetector!: ContradictionDetector;
   characterAgent!: CharacterAgentService;
   revisionOrchestrator!: RevisionOrchestrator;
   learning!: LearningService;
+  // Wave 3 — autonomous career agent with safety rails
   confirmationGate!: ConfirmationGateService;
+  disclosures!: DisclosuresService;
+  launchOrchestrator!: LaunchOrchestratorService;
+  amsAds!: AMSAdsService;
+  bookbub!: BookBubSubmitterService;
+  releaseCalendar!: ReleaseCalendarService;
+  readerIntel!: ReaderIntelService;
+  translationPipeline!: TranslationPipelineService;
+  websiteBuilder!: WebsiteBuilderService;
 
   /**
    * The object exposed to API routes. Identical keys/order to the former
@@ -223,19 +263,23 @@ export class ServiceContainer {
       sleepConsolidation: this.sleepConsolidation,
       userModel: this.userModel,
       cronScheduler: this.cronScheduler,
+      autoSkill: this.autoSkill,
+      skillCurator: this.skillCurator,
+      readerFeedback: this.readerFeedback,
       writingJudge: this.writingJudge,
       proseEvolver: this.proseEvolver,
       readerPanel: this.readerPanel,
       researchLookup: this.researchLookup,
+      videoResearch: this.videoResearch,
       storyStructures: this.storyStructures,
       plotPromises: this.plotPromises,
       characterVoices: this.characterVoices,
+      websiteSites: this.websiteSites,
+      blogPostDrafter: this.blogPostDrafter,
+      websiteDeploy: this.websiteDeploy,
       lessons: this.lessons,
       preferences: this.preferences,
-      chatHistory: this.chatHistory,
-      facts: this.facts,
-      companion: this.companion,
-      transcribe: this.transcribe,
+      orchestrator: this.orchestrator,
       kdpExporter: this.kdpExporter,
       betaReader: this.betaReader,
       dialogueAuditor: this.dialogueAuditor,
@@ -246,12 +290,21 @@ export class ServiceContainer {
       goals: this.goalsService,
       seriesBible: this.seriesBible,
       craftCritic: this.craftCritic,
+      audiobookPrep: this.audiobookPrep,
       styleClone: this.styleClone,
       contradictionDetector: this.contradictionDetector,
       characterAgent: this.characterAgent,
       revisionOrchestrator: this.revisionOrchestrator,
       learning: this.learning,
       confirmationGate: this.confirmationGate,
+      disclosures: this.disclosures,
+      launchOrchestrator: this.launchOrchestrator,
+      amsAds: this.amsAds,
+      bookbub: this.bookbub,
+      releaseCalendar: this.releaseCalendar,
+      readerIntel: this.readerIntel,
+      translationPipeline: this.translationPipeline,
+      websiteBuilder: this.websiteBuilder,
     };
   }
 }

@@ -1,5 +1,5 @@
 /**
- * Fibb Gateway - Main Entry Point
+ * AuthorAgent Gateway - Main Entry Point
  * A secure, author-focused fork of OpenClaw
  *
  * Security: MoatBot-grade (encrypted vault, sandboxed, audited)
@@ -18,7 +18,6 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
-import { exec } from 'child_process';
 
 import { ConfigService } from './services/config.js';
 import { MemoryService } from './services/memory.js';
@@ -44,21 +43,25 @@ import { ContextEngine } from './services/context-engine.js';
 import { MemorySearchService } from './services/memory-search.js';
 import { MemoryTierService } from './services/memory-tier.js';
 import { SleepConsolidationService } from './services/sleep-consolidation.js';
+import { ReaderFeedbackService } from './services/reader-feedback.js';
 import { UserModelService } from './services/user-model.js';
 import { CronSchedulerService } from './services/cron-scheduler.js';
+import { AutoSkillService } from './services/auto-skill.js';
+import { SkillCuratorService } from './services/skill-curator.js';
 import { WritingJudgeService } from './services/writing-judge.js';
 import { ProseEvolverService } from './services/prose-evolver.js';
 import { ReaderPanelService } from './services/reader-panel.js';
 import { ResearchLookupService } from './services/research-lookup.js';
+import { VideoResearchService } from './services/video-research.js';
 import { StoryStructureService } from './services/story-structures.js';
 import { PlotPromisesService } from './services/plot-promises.js';
 import { CharacterVoicesService } from './services/character-voices.js';
+import { WebsiteSiteService } from './services/website-sites.js';
+import { BlogPostDrafterService } from './services/blog-post-drafter.js';
+import { WebsiteDeployService } from './services/website-deploy.js';
 import { LessonStore } from './services/lessons.js';
 import { PreferenceStore } from './services/preferences.js';
-import { ChatHistoryStore } from './services/chat-history.js';
-import { FactsStore } from './services/facts.js';
-import { CompanionService } from './services/companion.js';
-import { TranscribeService } from './services/transcribe.js';
+import { OrchestratorService } from './services/orchestrator.js';
 import { KDPExporter } from './services/kdp-exporter.js';
 import { BetaReaderService } from './services/beta-reader.js';
 import { DialogueAuditor } from './services/dialogue-auditor.js';
@@ -69,12 +72,21 @@ import { TrackChangesService } from './services/track-changes.js';
 import { GoalsService } from './services/goals.js';
 import { SeriesBibleService } from './services/series-bible.js';
 import { CraftCriticService } from './services/craft-critic.js';
+import { AudiobookPrepService } from './services/audiobook-prep.js';
 import { StyleCloneService } from './services/style-clone.js';
 import { ContradictionDetector } from './services/contradiction-detector.js';
 import { CharacterAgentService } from './services/character-agent.js';
 import { RevisionOrchestrator } from './services/revision-orchestrator.js';
 import { LearningService } from './services/learning.js';
 import { ConfirmationGateService } from './services/confirmation-gate.js';
+import { DisclosuresService } from './services/disclosures.js';
+import { LaunchOrchestratorService } from './services/launch-orchestrator.js';
+import { AMSAdsService } from './services/ams-ads.js';
+import { BookBubSubmitterService } from './services/bookbub-submitter.js';
+import { ReleaseCalendarService } from './services/release-calendar.js';
+import { ReaderIntelService } from './services/reader-intel.js';
+import { TranslationPipelineService } from './services/translation-pipeline.js';
+import { WebsiteBuilderService } from './services/website-builder.js';
 import { TelegramBridge } from './bridges/telegram.js';
 import { DiscordBridge } from './bridges/discord.js';
 import { createAPIRoutes } from './api/routes.js';
@@ -89,10 +101,10 @@ const ROOT_DIR = __dirname.includes('dist')
   : join(__dirname, '..', '..');
 
 // ═══════════════════════════════════════════════════════════
-// Fibb Gateway
+// AuthorAgent Gateway
 // ═══════════════════════════════════════════════════════════
 
-class FibbGateway {
+class AuthorAgentGateway {
   private app: express.Application;
   private server: ReturnType<typeof createServer>;
   private io: SocketIO;
@@ -165,6 +177,12 @@ class FibbGateway {
   private set userModel(v: UserModelService) { this.services.userModel = v; }
   private get cronScheduler(): CronSchedulerService { return this.services.cronScheduler; }
   private set cronScheduler(v: CronSchedulerService) { this.services.cronScheduler = v; }
+  private get autoSkill(): AutoSkillService { return this.services.autoSkill; }
+  private set autoSkill(v: AutoSkillService) { this.services.autoSkill = v; }
+  private get skillCurator(): SkillCuratorService { return this.services.skillCurator; }
+  private set skillCurator(v: SkillCuratorService) { this.services.skillCurator = v; }
+  private get readerFeedback(): ReaderFeedbackService { return this.services.readerFeedback; }
+  private set readerFeedback(v: ReaderFeedbackService) { this.services.readerFeedback = v; }
   private get writingJudge(): WritingJudgeService { return this.services.writingJudge; }
   private set writingJudge(v: WritingJudgeService) { this.services.writingJudge = v; }
   private get proseEvolver(): ProseEvolverService { return this.services.proseEvolver; }
@@ -173,24 +191,26 @@ class FibbGateway {
   private set readerPanel(v: ReaderPanelService) { this.services.readerPanel = v; }
   private get researchLookup(): ResearchLookupService { return this.services.researchLookup; }
   private set researchLookup(v: ResearchLookupService) { this.services.researchLookup = v; }
+  private get videoResearch(): VideoResearchService { return this.services.videoResearch; }
+  private set videoResearch(v: VideoResearchService) { this.services.videoResearch = v; }
   private get storyStructures(): StoryStructureService { return this.services.storyStructures; }
   private set storyStructures(v: StoryStructureService) { this.services.storyStructures = v; }
   private get plotPromises(): PlotPromisesService { return this.services.plotPromises; }
   private set plotPromises(v: PlotPromisesService) { this.services.plotPromises = v; }
   private get characterVoices(): CharacterVoicesService { return this.services.characterVoices; }
   private set characterVoices(v: CharacterVoicesService) { this.services.characterVoices = v; }
+  private get websiteSites(): WebsiteSiteService { return this.services.websiteSites; }
+  private set websiteSites(v: WebsiteSiteService) { this.services.websiteSites = v; }
+  private get blogPostDrafter(): BlogPostDrafterService { return this.services.blogPostDrafter; }
+  private set blogPostDrafter(v: BlogPostDrafterService) { this.services.blogPostDrafter = v; }
+  private get websiteDeploy(): WebsiteDeployService { return this.services.websiteDeploy; }
+  private set websiteDeploy(v: WebsiteDeployService) { this.services.websiteDeploy = v; }
   private get lessons(): LessonStore { return this.services.lessons; }
   private set lessons(v: LessonStore) { this.services.lessons = v; }
   private get preferences(): PreferenceStore { return this.services.preferences; }
   private set preferences(v: PreferenceStore) { this.services.preferences = v; }
-  private get chatHistory(): ChatHistoryStore { return this.services.chatHistory; }
-  private set chatHistory(v: ChatHistoryStore) { this.services.chatHistory = v; }
-  private get facts(): FactsStore { return this.services.facts; }
-  private set facts(v: FactsStore) { this.services.facts = v; }
-  private get companion(): CompanionService { return this.services.companion; }
-  private set companion(v: CompanionService) { this.services.companion = v; }
-  private get transcribe(): TranscribeService { return this.services.transcribe; }
-  private set transcribe(v: TranscribeService) { this.services.transcribe = v; }
+  private get orchestrator(): OrchestratorService { return this.services.orchestrator; }
+  private set orchestrator(v: OrchestratorService) { this.services.orchestrator = v; }
   private get kdpExporter(): KDPExporter { return this.services.kdpExporter; }
   private set kdpExporter(v: KDPExporter) { this.services.kdpExporter = v; }
   private get betaReader(): BetaReaderService { return this.services.betaReader; }
@@ -211,6 +231,8 @@ class FibbGateway {
   private set seriesBible(v: SeriesBibleService) { this.services.seriesBible = v; }
   private get craftCritic(): CraftCriticService { return this.services.craftCritic; }
   private set craftCritic(v: CraftCriticService) { this.services.craftCritic = v; }
+  private get audiobookPrep(): AudiobookPrepService { return this.services.audiobookPrep; }
+  private set audiobookPrep(v: AudiobookPrepService) { this.services.audiobookPrep = v; }
   private get styleClone(): StyleCloneService { return this.services.styleClone; }
   private set styleClone(v: StyleCloneService) { this.services.styleClone = v; }
   private get contradictionDetector(): ContradictionDetector { return this.services.contradictionDetector; }
@@ -223,6 +245,22 @@ class FibbGateway {
   private set learning(v: LearningService) { this.services.learning = v; }
   private get confirmationGate(): ConfirmationGateService { return this.services.confirmationGate; }
   private set confirmationGate(v: ConfirmationGateService) { this.services.confirmationGate = v; }
+  private get disclosures(): DisclosuresService { return this.services.disclosures; }
+  private set disclosures(v: DisclosuresService) { this.services.disclosures = v; }
+  private get launchOrchestrator(): LaunchOrchestratorService { return this.services.launchOrchestrator; }
+  private set launchOrchestrator(v: LaunchOrchestratorService) { this.services.launchOrchestrator = v; }
+  private get amsAds(): AMSAdsService { return this.services.amsAds; }
+  private set amsAds(v: AMSAdsService) { this.services.amsAds = v; }
+  private get bookbub(): BookBubSubmitterService { return this.services.bookbub; }
+  private set bookbub(v: BookBubSubmitterService) { this.services.bookbub = v; }
+  private get releaseCalendar(): ReleaseCalendarService { return this.services.releaseCalendar; }
+  private set releaseCalendar(v: ReleaseCalendarService) { this.services.releaseCalendar = v; }
+  private get readerIntel(): ReaderIntelService { return this.services.readerIntel; }
+  private set readerIntel(v: ReaderIntelService) { this.services.readerIntel = v; }
+  private get translationPipeline(): TranslationPipelineService { return this.services.translationPipeline; }
+  private set translationPipeline(v: TranslationPipelineService) { this.services.translationPipeline = v; }
+  private get websiteBuilder(): WebsiteBuilderService { return this.services.websiteBuilder; }
+  private set websiteBuilder(v: WebsiteBuilderService) { this.services.websiteBuilder = v; }
 
   // The core chat pipeline. Owns per-channel conversation history and the
   // injection/rate-limit/context/routing/persistence/fallback flow. Built once
@@ -243,8 +281,7 @@ class FibbGateway {
         directives: {
           defaultSrc: ["'self'"],
           scriptSrc: ["'self'", "'unsafe-inline'"],
-          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-          fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+          styleSrc: ["'self'", "'unsafe-inline'"],
           connectSrc: ["'self'", "http://localhost:3847", "http://127.0.0.1:3847"],
         },
       },
@@ -255,7 +292,7 @@ class FibbGateway {
 
   async initialize(): Promise<void> {
     logger.info('');
-    logger.info('  ✍️  Fibb v3.0.0');
+    logger.info('  ✍️  AuthorAgent v3.0.0');
     logger.info('  ═══════════════════════════════════');
     logger.info('  The Autonomous AI Writing Agent');
     logger.info('  An OpenClaw fork for authors');
@@ -322,7 +359,7 @@ class FibbGateway {
         logger.warn(`  ⚠ Memory search reindex failed: ${(err as Error)?.message || err}`);
       }
     } else {
-      logger.warn('  ⚠ Memory search unavailable (search will be disabled, rest of Fibb works)');
+      logger.warn('  ⚠ Memory search unavailable (search will be disabled, rest of AuthorAgent works)');
     }
 
     // ── Phase 4: AI Providers ──
@@ -367,15 +404,15 @@ class FibbGateway {
     // ── Phase 6b: Author OS Tools ──
     // Author OS is a SEPARATE project (Author Workflow Engine, Book Bible Engine,
     // Manuscript Autopsy, AI Author Library, Creator Asset Suite, Format Factory Pro).
-    // If you have it installed alongside Fibb, we auto-discover and integrate.
-    // If you don't, Fibb works fine without it — this is purely additive.
+    // If you have it installed alongside AuthorAgent, we auto-discover and integrate.
+    // If you don't, AuthorAgent works fine without it — this is purely additive.
     const homeDir = process.env.HOME || process.env.USERPROFILE || '~';
     const authorOSCandidates = [
       process.env.AUTHOR_OS_PATH || '',                           // Explicit env var (highest priority)
       '/app/author-os',                                           // Docker mount
       join(homeDir, 'author-os'),                                 // ~/author-os (Linux/macOS)
       join(homeDir, 'Author OS'),                                 // ~/Author OS (with space)
-      join(ROOT_DIR, '..', 'Author OS'),                          // Sibling to Fibb
+      join(ROOT_DIR, '..', 'Author OS'),                          // Sibling to AuthorAgent
       join(ROOT_DIR, '..', '..', 'Author OS'),                    // Automations/Author OS/ (Windows default)
       join(ROOT_DIR, '..', 'author-os'),                          // sibling lowercase
     ].filter(Boolean);
@@ -407,8 +444,8 @@ class FibbGateway {
         logger.info(`    Expected subfolders: "Author Workflow Engine", "Book Bible Engine", "Manuscript Autopsy", "AI Author Library".`);
       }
     } else {
-      logger.info('  ℹ Author OS: not installed (optional — Fibb works without it).');
-      logger.info('    To enable: place the Author OS folder next to Fibb, or set AUTHOR_OS_PATH in .env');
+      logger.info('  ℹ Author OS: not installed (optional — AuthorAgent works without it).');
+      logger.info('    To enable: place the Author OS folder next to AuthorAgent, or set AUTHOR_OS_PATH in .env');
     }
 
     // ── Phase 6c: TTS Service (Piper) — silent init, optional feature ──
@@ -472,16 +509,6 @@ class FibbGateway {
     const prefCount = Object.keys(this.preferences.getAll()).length;
     logger.info(`  ✓ Preferences: ${prefCount} tracked`);
 
-    this.chatHistory = new ChatHistoryStore(join(ROOT_DIR, 'workspace', 'memory'));
-    this.facts = new FactsStore(join(ROOT_DIR, 'workspace', 'memory'));
-    await this.facts.initialize();
-    this.companion = new CompanionService(join(ROOT_DIR, 'workspace'));
-    await this.companion.initialize();
-    this.companion.isVoiceAvailable = (id) => this.tts?.isVoiceReadySync(id) ?? true;
-    this.transcribe = new TranscribeService(this.vault, {
-      geminiModel: () => this.aiRouter.getProviderModelInfo().find(p => p.id === 'gemini')?.currentModel ?? 'gemini-2.0-flash',
-    });
-
     // ── Phase 6g2: User Model (Honcho-style dialectic, simplified) ──
     // Tracks behavioral observations + per-persona breakdown + periodically
     // consolidates them into an LLM-generated narrative profile.
@@ -520,9 +547,31 @@ class FibbGateway {
     // later in initialize() (after SeriesBible), so this handler reads it
     // lazily and guards on it being ready — mirrors how the reindex handler
     // reads this.memorySearch.
+    // Reader-feedback weekly sync — lazy-guarded like the handlers above.
+    this.cronScheduler.registerHandler('reader-feedback-sync', async () => {
+      if (!this.readerFeedback) return { success: false, message: 'Reader feedback not initialized' };
+      return this.readerFeedback.syncAll();
+    });
     this.cronScheduler.registerHandler('sleep-consolidation', async (payload) => {
       if (!this.sleepConsolidation) return { success: false, message: 'Sleep consolidation not initialized' };
       return this.sleepConsolidation.run(payload || {});
+    });
+    // Skill curation (Skill Curator, Hermes-pattern). The SkillCuratorService is
+    // built later in initialize() (Phase 6g4b), so this handler reads it lazily
+    // and guards on it being ready — mirrors the sleep-consolidation handler.
+    this.cronScheduler.registerHandler('skill-curation', async (payload) => {
+      if (!this.skillCurator) return { success: false, message: 'Skill curator not initialized' };
+      try {
+        const report = await this.skillCurator.curate(payload || {});
+        return {
+          success: true,
+          message:
+            `Curated ${report.totalSkills} skill(s): ${report.unused.length} unused, ` +
+            `${report.overlapping.length} overlapping pair(s), ${report.redundantWithService.length} service-redundant`,
+        };
+      } catch (err: any) {
+        return { success: false, message: err?.message || 'Curation failed' };
+      }
     });
     this.cronScheduler.start();
     // Seed the daily sleep-consolidation job at 04:00 if it doesn't already
@@ -539,7 +588,52 @@ class FibbGateway {
         logger.warn(`  ⚠ Could not seed sleep-consolidation cron: ${(err as any)?.message || err}`);
       }
     }
+    // Seed the weekly skill-curation job (Monday 05:00) if absent — idempotent
+    // across restarts, mirroring the sleep-consolidation seeding above.
+    if (!this.cronScheduler.list().some(j => j.handler === 'skill-curation')) {
+      try {
+        await this.cronScheduler.createJob({
+          name: 'Weekly skill-library curation',
+          schedule: '0 5 * * 1',
+          handler: 'skill-curation',
+        });
+        logger.info('  ✓ Registered weekly skill-curation cron (0 5 * * 1)');
+      } catch (err) {
+        logger.warn(`  ⚠ Could not seed skill-curation cron: ${(err as any)?.message || err}`);
+      }
+    }
     logger.info(`  ✓ Cron scheduler: ${this.cronScheduler.list().length} job(s) scheduled, ${this.cronScheduler.listHandlers().length} handlers`);
+
+    // ── Phase 6g4: Auto-Skill Creator ──
+    // Drafts SKILL.md files from completed projects. Drafts go to
+    // skills/_drafts and require user approval before promotion to ops/.
+    this.autoSkill = new AutoSkillService(ROOT_DIR);
+    this.autoSkill.setAI(
+      (req) => this.aiRouter.complete(req),
+      (taskType: string) => this.aiRouter.selectProvider(taskType),
+    );
+    this.autoSkill.setExistingSkillsLookup(() => {
+      const names = new Set<string>();
+      for (const s of this.skills?.getSkillCatalog() || []) names.add(s.name);
+      return names;
+    });
+    await this.autoSkill.initialize();
+    const drafts = this.autoSkill.list({ status: 'pending_review' });
+    logger.info(`  ✓ Auto-skill drafter: ${drafts.length} draft(s) pending review`);
+
+    // ── Phase 6g4b: Skill Curator (Hermes-pattern library health) ──
+    // Reads the loaded skill catalog + the usage stats logged by
+    // SkillLoader.matchSkills and produces a READ-ONLY curation report: unused
+    // skills, overlapping pairs (cheap non-AI similarity), and skills that
+    // duplicate a backend service (the style-clone split-brain). The optional
+    // summary uses the FREE tier only. Runs weekly via the 'skill-curation'
+    // cron handler registered above; also exposed at GET /api/skills/curation.
+    this.skillCurator = new SkillCuratorService(
+      this.skills,
+      (req) => this.aiRouter.complete(req),
+      (taskType: string) => this.aiRouter.selectProvider(taskType),
+    );
+    logger.info('  ✓ Skill curator: usage tracking + weekly consolidation pass ready');
 
     // ── Phase 6g5: Writing Judge (AutoNovel-inspired evaluate-retry loop) ──
     // Mechanical screen (regex) + LLM judge runs on every chapter draft.
@@ -569,7 +663,15 @@ class FibbGateway {
     // ── Phase 6g6: Research services (sourced lookup + video extraction) ──
     this.researchLookup = new ResearchLookupService();
     this.researchLookup.setDependencies(this.vault, this.aiRouter);
-    logger.info('  ✓ Research lookup ready');
+
+    this.videoResearch = new VideoResearchService(join(ROOT_DIR, 'workspace'));
+    this.videoResearch.setDependencies(this.vault, this.aiRouter);
+    const videoDoctor = await this.videoResearch.doctor();
+    if (videoDoctor.ready) {
+      logger.info(`  ✓ Research lookup ready (Perplexity via OpenRouter or fallback) | Video research ready (yt-dlp${videoDoctor.ffmpegInstalled ? ' + ffmpeg' : ''}${videoDoctor.whisperKeyConfigured ? ' + Whisper' : ''})`);
+    } else {
+      logger.info('  ✓ Research lookup ready | Video research disabled (yt-dlp not installed — see /api/video/doctor)');
+    }
 
     // ── Phase 6g7: Story Structures (smart-recommend, not forced) ──
     this.storyStructures = new StoryStructureService();
@@ -586,9 +688,61 @@ class FibbGateway {
     await this.characterVoices.initialize();
     logger.info(`  ✓ Character voices: per-character voice drift tracker ready`);
 
+    // ── Phase 6h: Website management — auto-add-book, blog drafter, deploy ──
+    this.websiteSites = new WebsiteSiteService(join(ROOT_DIR, 'workspace'));
+    await this.websiteSites.initialize();
+    this.blogPostDrafter = new BlogPostDrafterService();
+    this.websiteDeploy = new WebsiteDeployService();
+    const sitesCount = this.websiteSites.list().length;
+    logger.info(`  ✓ Website management: ${sitesCount} site${sitesCount === 1 ? '' : 's'} registered, blog drafter + deploy adapters ready`);
+
+    // Register the project-completion hook for auto-add-book.
+    // When a book-production project completes AND has linked sites, the
+    // book is auto-added to each site's books list (idempotent on slug).
+    // Author still has to render + deploy explicitly — auto-publishing
+    // would be too aggressive.
+    this.projectEngine.onProjectCompleted(async (project: any) => {
+      try {
+        const isBookProject = project.type === 'book-production' || project.type === 'novel-pipeline';
+        if (!isBookProject) return;
+        const linkedSites = this.websiteSites.findSitesForProject(project.id);
+        if (linkedSites.length === 0) return;
+
+        const persona = project.personaId ? this.personas.get?.(project.personaId) : null;
+        const authorName = persona?.penName || 'AuthorAgent';
+        const slug = String(project.title || 'untitled').toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+        const book: import('./services/website-builder.js').WebsiteBook = {
+          slug,
+          title: project.title,
+          subtitle: project.context?.subtitle,
+          blurb: this.escapeBasicHTML(String(project.description || '')),
+          releaseDate: new Date().toISOString().split('T')[0],
+          seriesName: project.context?.seriesName,
+          seriesNumber: project.context?.seriesNumber,
+          genre: project.context?.genre,
+          formats: ['ebook'],
+        };
+
+        for (const site of linkedSites) {
+          await this.websiteSites.autoAddBook(site.id, book);
+          this.activityLog.log({
+            type: 'file_saved',
+            source: 'internal',
+            goalId: project.id,
+            message: `Auto-added "${project.title}" to site "${site.config.siteName}". Render + deploy when ready.`,
+            metadata: { siteId: site.id, bookSlug: slug, authorName },
+          });
+        }
+      } catch (err) {
+        logger.warn('  [website-sites] auto-add-book hook failed:', (err as Error)?.message || err);
+      }
+    });
+
     // ── Wire project-completion hooks ──
     // When a project finishes, observe the event for the user model AND
-    // (auto-skill drafting was archived).
+    // give the auto-skill drafter a chance to capture the workflow.
     this.projectEngine.onProjectCompleted((project: any) => {
       // User-model observation
       try {
@@ -598,7 +752,23 @@ class FibbGateway {
           personaId: project.personaId || this.memory.getActivePersonaId(),
         });
       } catch { /* never block completion */ }
+      // Auto-skill draft (fire-and-forget; AI may take a few seconds)
+      this.autoSkill?.maybeDraftFromProject({
+        id: project.id,
+        type: project.type,
+        title: project.title,
+        description: project.description,
+        steps: project.steps || [],
+      }).catch(err => logger.error('[auto-skill] draft error:', err));
     });
+
+    // ── Phase 6h: Orchestrator (script manager) ──
+    this.orchestrator = new OrchestratorService(join(ROOT_DIR, 'workspace'));
+    await this.orchestrator.initialize();
+    const scriptCount = this.orchestrator.getConfigs().length;
+    logger.info(`  ✓ Orchestrator: ${scriptCount} script(s) configured`);
+    await this.orchestrator.autoStartAll();
+    this.orchestrator.startHealthCheck();
 
     // ── Phase 6i: Author-facing export & feedback services ──
     this.kdpExporter = new KDPExporter();
@@ -639,9 +809,22 @@ class FibbGateway {
     });
     logger.info('  ✓ Sleep consolidation: CoreDigest materialization + free-tier passes ready');
 
+    // ── Reader-feedback moat ──
+    // Ingests public Royal Road stats/comments (polite, rate-limited) and
+    // distills free-tier comment themes so future chapters can be drafted
+    // with real reader-reaction data. Wattpad is an honest stub.
+    this.readerFeedback = new ReaderFeedbackService({
+      workspaceDir: join(ROOT_DIR, 'workspace'),
+      aiComplete: (request) => this.aiRouter.complete(request),
+      aiSelectProvider: (taskType: string) => this.aiRouter.selectProvider(taskType),
+    });
+    await this.readerFeedback.initialize();
+    logger.info('  ✓ Reader-feedback moat: Royal Road ingestion + free-tier comment themes ready');
+
     this.craftCritic = new CraftCriticService();
+    this.audiobookPrep = new AudiobookPrepService();
     this.styleClone = new StyleCloneService();
-    logger.info('  ✓ Craft critic, style clone ready');
+    logger.info('  ✓ Craft critic, audiobook prep, style clone ready');
 
     // ── Active contradiction detection ──
     // ConStory-style consistency checker: diffs a chapter against the entity DB
@@ -700,6 +883,33 @@ class FibbGateway {
     this.confirmationGate.setAuditLogger((category, action, meta) => this.audit.log(category, action, meta));
     await this.confirmationGate.initialize();
     logger.info(`  ✓ Confirmation gate: ${this.confirmationGate.list({ status: 'pending' }).length} pending`);
+
+    this.disclosures = new DisclosuresService();
+
+    this.launchOrchestrator = new LaunchOrchestratorService(join(ROOT_DIR, 'workspace'));
+    this.launchOrchestrator.setDependencies(this.confirmationGate, this.disclosures);
+    await this.launchOrchestrator.initialize();
+    logger.info(`  ✓ Launch orchestrator: ${this.launchOrchestrator.listLaunches().length} launch(es) tracked`);
+
+    this.amsAds = new AMSAdsService();
+    this.bookbub = new BookBubSubmitterService();
+
+    this.releaseCalendar = new ReleaseCalendarService(join(ROOT_DIR, 'workspace'));
+    await this.releaseCalendar.initialize();
+    logger.info(`  ✓ Release calendar: ${this.releaseCalendar.list().length} event(s)`);
+
+    this.readerIntel = new ReaderIntelService();
+
+    this.translationPipeline = new TranslationPipelineService();
+    this.translationPipeline.setGate(this.confirmationGate);
+    this.translationPipeline.setAI(
+      (req) => this.aiRouter.complete(req),
+      (taskType: string) => this.aiRouter.selectProvider(taskType),
+    );
+
+    this.websiteBuilder = new WebsiteBuilderService(join(ROOT_DIR, 'workspace'));
+    logger.info('  ✓ AMS, BookBub, Reader Intel, Translation, Website Builder ready');
+    logger.warn('  ⚠ Wave 3 actions are gated — review SECURITY.md and confirm every external action.');
 
     // ── Phase 7: Heartbeat ──
     this.heartbeat = new HeartbeatService(this.config.get('heartbeat'), this.memory, join(ROOT_DIR, 'workspace'));
@@ -822,7 +1032,7 @@ class FibbGateway {
               });
 
               const coreLessonsPath = join(agentDir, 'core-lessons.md');
-              const coreLessonsContent = `# Fibb Core Lessons\n\n` +
+              const coreLessonsContent = `# AuthorAgent Core Lessons\n\n` +
                 `*Auto-consolidated from ${log.length} project analyses on ${new Date().toISOString().split('T')[0]}*\n\n` +
                 consolidateResult.text;
               await fs.writeFile(coreLessonsPath, coreLessonsContent, 'utf-8');
@@ -894,7 +1104,7 @@ class FibbGateway {
           const provider = this.aiRouter.selectProvider('general');
           const result = await this.aiRouter.complete({
             provider: provider.id,
-            system: 'You are Fibb, an AI writing agent for authors. Be detailed, actionable, and expert-level.',
+            system: 'You are AuthorAgent, an AI writing agent for authors. Be detailed, actionable, and expert-level.',
             messages: [{ role: 'user' as const, content: task.prompt }],
             maxTokens: 2000,
           });
@@ -950,12 +1160,10 @@ class FibbGateway {
       const token = await this.vault.get('telegram_bot_token');
       if (token) {
         this.telegram = new TelegramBridge(token, this.config.get('bridges.telegram'));
-        this.telegram.onMessage((content, channel, respond, extra, task, provider, onChunk) =>
-          this.handleMessage(content, channel, respond, extra, task, provider, onChunk)
+        this.telegram.onMessage((content, channel, respond) =>
+          this.handleMessage(content, channel, respond)
         );
         this.telegram.setCommandHandlers(commandHandlers);
-        this.telegram.setTranscriber((b, m) => this.transcribe.transcribe(b, m).then(r => r.text));
-        this.telegram.setCompanionVoice(() => this.companion.getVoicePreset());
         await this.telegram.connect();
         logger.info('  ✓ Telegram bridge connected (command center mode)');
       } else {
@@ -983,19 +1191,11 @@ class FibbGateway {
     logger.info('  ✓ WebSocket ready');
 
     // ── Phase 11: Static Dashboard ──
-    const legacyPath = join(ROOT_DIR, 'dashboard', 'dist');
-    const appPath = join(ROOT_DIR, 'app', 'dist');
-    const hasApp = existsSync(join(appPath, 'index.html'));
-
-    // Legacy dashboard stays reachable during the transition.
-    this.app.use('/legacy', express.static(legacyPath));
-    this.app.get('/legacy/*', (_req, res) => res.sendFile(join(legacyPath, 'index.html')));
-
-    // The Fibb app is the root when it has been built; otherwise fall back to the legacy dashboard.
-    const rootPath = hasApp ? appPath : legacyPath;
-    this.app.use(express.static(rootPath));
+    const dashboardPath = join(ROOT_DIR, 'dashboard', 'dist');
+    this.app.use(express.static(dashboardPath));
 
     // JSON 404 handler for API routes — MUST run before SPA fallback
+    // so unmatched /api/ requests get JSON errors instead of the dashboard HTML.
     this.app.use((req: any, res: any, next: any) => {
       if (req.path.startsWith('/api/')) {
         return res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` });
@@ -1003,11 +1203,13 @@ class FibbGateway {
       next();
     });
 
+    // SPA fallback — any non-API path serves the dashboard HTML
     this.app.get('*', (req, res) => {
-      if (req.path.startsWith('/api/')) return;
-      res.sendFile(join(rootPath, 'index.html'), (err) => {
+      if (req.path.startsWith('/api/')) return; // already handled above
+      const htmlFile = join(dashboardPath, 'index.html');
+      res.sendFile(htmlFile, (err) => {
         if (err && !res.headersSent) {
-          res.status(500).json({ status: 'error', message: 'Fibb is running but the app build was not found. Run: npm run app:build' });
+          res.status(500).json({ status: 'error', message: 'AuthorAgent running but dashboard HTML not found.' });
         }
       });
     });
@@ -1024,7 +1226,7 @@ class FibbGateway {
     await this.activityLog.log({
       type: 'system',
       source: 'internal',
-      message: `Fibb started — ${providers.length} AI provider(s), ${this.skills.getLoadedCount()} skills`,
+      message: `AuthorAgent started — ${providers.length} AI provider(s), ${this.skills.getLoadedCount()} skills`,
       metadata: {
         providers: providers.map(p => p.id),
         skillCount: this.skills.getLoadedCount(),
@@ -1033,14 +1235,8 @@ class FibbGateway {
 
     logger.info('');
     logger.info('  ═══════════════════════════════════');
-    logger.info('  ✍️  Fibb is ready to write');
+    logger.info('  ✍️  AuthorAgent is ready to write');
     logger.info(`  📡 Dashboard: http://localhost:${this.config.get('server.port', 3847)}`);
-    if (!process.env.AUTHORCLAW_NO_OPEN && !process.env.AUTHORAGENT_NO_OPEN) {
-      const url = `http://localhost:${this.config.get('server.port', 3847)}`;
-      const cmd = process.platform === 'win32' ? `start "" "${url}"`
-        : process.platform === 'darwin' ? `open "${url}"` : `xdg-open "${url}"`;
-      exec(cmd, () => { /* best effort */ });
-    }
     logger.info('  ═══════════════════════════════════');
     logger.info('');
   }
@@ -1059,12 +1255,9 @@ class FibbGateway {
 
       socket.on('message', async (data: { content: string }) => {
         try {
-          await this.handleMessage(
-            data.content, 'webchat',
-            (response) => { socket.emit('response', { content: response }); },
-            undefined, undefined, undefined,
-            (chunk) => { socket.emit('chunk', { content: chunk }); },
-          );
+          await this.handleMessage(data.content, 'webchat', (response) => {
+            socket.emit('response', { content: response });
+          });
         } catch (error) {
           socket.emit('error', { message: 'An error occurred processing your message' });
           this.audit.log('error', 'message_processing_failed', { error: String(error) });
@@ -1087,8 +1280,7 @@ class FibbGateway {
     respond: (text: string) => void,
     extraContext?: string,
     overrideTaskType?: string,
-    preferredProvider?: string,
-    onChunk?: (chunk: string) => void,
+    preferredProvider?: string
   ): Promise<void> {
     // Thin delegate — the full chat pipeline (injection scan, rate limit,
     // preference auto-detect, context build, task classification, system-prompt
@@ -1103,7 +1295,6 @@ class FibbGateway {
       extraContext,
       overrideTaskType,
       preferredProvider,
-      onChunk,
     );
   }
 
@@ -1324,7 +1515,7 @@ class FibbGateway {
         const paused = projects.filter(p => p.status === 'paused');
         const autoStatus = this.heartbeat.getAutonomousStatus();
         const stats = this.heartbeat.getStats();
-        let status = `**Fibb Status**\n\n`;
+        let status = `**AuthorAgent Status**\n\n`;
         status += `📊 Projects: ${active.length} active, ${paused.length} paused, ${completed.length} completed\n`;
         status += `🤖 Agent: ${autoStatus.enabled ? (autoStatus.running ? '**WORKING**' : '**ON**') : 'OFF'}\n`;
         status += `📝 Words today: ${stats.todayWords.toLocaleString()}/${stats.dailyWordGoal.toLocaleString()} (${stats.goalPercent}%)`;
@@ -1698,12 +1889,10 @@ class FibbGateway {
         allowedUsers: this.config.get('bridges.telegram.allowedUsers', []),
         pairingEnabled: this.config.get('bridges.telegram.pairingEnabled', true),
       });
-      this.telegram.onMessage((content, channel, respond, extra, task, provider, onChunk) =>
-        this.handleMessage(content, channel, respond, extra, task, provider, onChunk)
+      this.telegram.onMessage((content, channel, respond) =>
+        this.handleMessage(content, channel, respond)
       );
       this.telegram.setCommandHandlers(this.buildTelegramCommandHandlers());
-      this.telegram.setTranscriber((b, m) => this.transcribe.transcribe(b, m).then(r => r.text));
-      this.telegram.setCompanionVoice(() => this.companion.getVoicePreset());
       await this.telegram.connect();
       this.audit.log('bridge', 'telegram_connected', {});
       this.activityLog.log({
@@ -2034,7 +2223,7 @@ class FibbGateway {
               // Generate DOCX version
               const docxBuffer = await generateDocxBuffer({
                 title: project.title,
-                author: 'Fibb',
+                author: 'AuthorAgent',
                 content: manuscriptMd,
               });
               await fs.writeFile(join(projectDir, 'manuscript.docx'), docxBuffer);
@@ -2306,23 +2495,23 @@ class FibbGateway {
   }
 
   async shutdown(): Promise<void> {
-    logger.info('\n  Shutting down Fibb...');
+    logger.info('\n  Shutting down AuthorAgent...');
     this.heartbeat?.stop();
     this.telegram?.disconnect();
     this.discord?.disconnect();
     await this.activityLog?.log({
       type: 'system',
       source: 'internal',
-      message: 'Fibb shutting down',
+      message: 'AuthorAgent shutting down',
     });
     await this.audit?.log('system', 'shutdown', {});
     this.server.close();
-    logger.info('  ✍️  Fibb stopped. Happy writing!\n');
+    logger.info('  ✍️  AuthorAgent stopped. Happy writing!\n');
   }
 }
 
 // ── Start ──
-const gateway = new FibbGateway();
+const gateway = new AuthorAgentGateway();
 
 process.on('SIGINT', async () => {
   await gateway.shutdown();
@@ -2335,8 +2524,8 @@ process.on('SIGTERM', async () => {
 });
 
 gateway.start().catch((error) => {
-  logger.error('Failed to start Fibb:', error);
+  logger.error('Failed to start AuthorAgent:', error);
   process.exit(1);
 });
 
-export { FibbGateway };
+export { AuthorAgentGateway };

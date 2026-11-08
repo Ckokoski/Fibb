@@ -1,9 +1,9 @@
 /**
- * Fibb User Model — Honcho-inspired dialectic modeling, simplified.
+ * AuthorAgent User Model — Honcho-inspired dialectic modeling, simplified.
  *
  * Honcho (Plastic Labs) builds user models via two LLMs in a dialectic loop:
  * one observes raw conversation, the other challenges and refines the
- * resulting model. Fibb does the simpler version — single periodic
+ * resulting model. AuthorAgent does the simpler version — single periodic
  * consolidation pass — because we don't need real-time refinement and we
  * want to keep AI cost predictable.
  *
@@ -16,7 +16,7 @@
  *      use of slash commands vs. natural language
  *
  *   3. Writing style fingerprint — averaged StyleClone markers from any
- *      writing the user has done in Fibb
+ *      writing the user has done in AuthorAgent
  *
  *   4. Working patterns — session length, words/hour, day-of-week clustering
  *

@@ -1,6 +1,6 @@
-# Fibb Launch Guide
+# AuthorAgent Launch Guide
 
-Quick reference for starting, stopping, and managing Fibb.
+Quick reference for starting, stopping, and managing AuthorAgent.
 
 ---
 
@@ -8,7 +8,7 @@ Quick reference for starting, stopping, and managing Fibb.
 
 ### Start the server
 ```bash
-cd fibb
+cd C:\Users\chris\OneDrive\Documents\Automations\AuthorAgent\authoragent
 npm start
 ```
 
@@ -20,7 +20,7 @@ npm run dev
 ### Stop the server
 Press `Ctrl+C` in the terminal, or:
 ```bash
-taskkill /F /FI "WINDOWTITLE eq *fibb*"
+taskkill /F /FI "WINDOWTITLE eq *authoragent*"
 ```
 
 ### Dashboard
@@ -33,24 +33,20 @@ Open browser to: **http://localhost:3847**
 ### First-time setup
 ```bash
 # 1. Clone the repo
-git clone https://github.com/Ckokoski/Fibb.git fibb
-cd fibb
+git clone https://github.com/Ckokoski/Fibb.git
+cd authoragent
 
 # 2. Install Node 22+ (if running without Docker)
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 
-# 3. No vault key to create; see "Vault key" below
+# 3. Create .env with your vault key
+echo "AUTHORCLAW_VAULT_KEY=your-64-char-hex-key-here" > .env
+chmod 600 .env
 
 # 4. Install dependencies (if running without Docker)
 npm ci
 ```
-
-### Vault key
-
-You do not need to create one. On first start Fibb generates a vault key and stores it outside the repo
-(`%LOCALAPPDATA%\AuthorClaw\vault.key` on Windows, `~/.authorclaw/vault.key` elsewhere) so encrypted API keys
-never sync to cloud drives. To move Fibb to another machine, copy that one file.
 
 ### Start with Docker
 ```bash
@@ -70,7 +66,7 @@ npm start
 ```
 
 ### Remote access (from your PC to VPS)
-Fibb binds to `127.0.0.1` only — it's not exposed to the internet by default.
+AuthorAgent binds to `127.0.0.1` only — it's not exposed to the internet by default.
 Use an SSH tunnel to access it securely:
 ```bash
 # On your local PC — creates a secure tunnel
@@ -145,7 +141,7 @@ curl -X POST http://localhost:3847/api/projects/PROJECT_ID/resume
 
 | Service | Port | Binding |
 |---|---|---|
-| Fibb | 3847 | localhost only |
+| AuthorAgent | 3847 | localhost only |
 | Ollama (if installed) | 11434 | localhost only |
 
 ## Security Checklist

@@ -1,5 +1,5 @@
 /**
- * Fibb Discord Bridge (Stub)
+ * AuthorAgent Discord Bridge (Stub)
  * Discord integration — similar structure to Telegram
  */
 

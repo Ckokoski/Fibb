@@ -1,5 +1,5 @@
 /**
- * Fibb Path Safety
+ * AuthorAgent Path Safety
  *
  * Single source of truth for filesystem path safety. All user-supplied strings
  * that become filesystem paths MUST route through these pure functions.

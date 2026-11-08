@@ -1,8 +1,6 @@
-# Fibb
+# AuthorAgent
 
-> **Status: BETA, in active development.** Fibb is being rebuilt as a chat-first writing companion. Chat, memory, and streaming work today; voice, overnight tasks, and connectors are arriving phase by phase. Expect rough edges and breaking changes. For the finished pipeline dashboard, use the archived AuthorAgent 4.0 release linked below.
-
-**The AI writing partner for authors. Knows your book, works while you sleep, talks like a friend.**
+**The free, open-source AI writing agent that runs the entire book pipeline on your own machine.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen.svg)](https://nodejs.org)
@@ -11,7 +9,7 @@
 
 Every author wants an agent. This one works for your book — not for 15%.
 
-Fibb takes an idea (or your existing manuscript) through **research → outline → write → revise → format → publish-ready** in one autonomous pipeline, on your computer, with your own AI keys. What a $2,000/year stack of subscriptions tries to do, one free tool does — **without your manuscript ever leaving your machine**.
+AuthorAgent takes an idea (or your existing manuscript) through **research → outline → write → revise → format → publish-ready** in one autonomous pipeline, on your computer, with your own AI keys. What a $2,000/year stack of subscriptions tries to do, one free tool does — **without your manuscript ever leaving your machine**.
 
 **Three things that make it different:**
 
@@ -23,15 +21,6 @@ Fibb takes an idea (or your existing manuscript) through **research → outline 
 > It is preserved as the [`v4.0.0-authoragent` release](https://github.com/Ckokoski/Fibb/releases/tag/v4.0.0-authoragent)
 > (zip download) and the [`archive/wave3-marketing`](https://github.com/Ckokoski/Fibb/tree/archive/wave3-marketing) branch.
 > `main` is being rebuilt as **Fibb**, a chat-first writing companion; see `docs/superpowers/specs/`.
-
-**What works today**
-
-- Chat with memory
-- Six companions (Nib is the default), each with their own voice
-- Voice notes on Telegram
-- Human-sounding voices: Kokoro (free, runs locally; one ~90 MB download) and Gemini TTS (free tier with your Gemini key), Edge as fallback
-- Mic, read-aloud, and hands-free mode in the app
-- Connections for your keys (free Gemini and local Ollama first)
 
 ---
 
@@ -60,7 +49,7 @@ This is the part built to make books *better*, not just faster:
 
 ## Long-Book Memory
 
-The unsolved problem of AI writing is book-length consistency. Fibb ships a tiered memory system:
+The unsolved problem of AI writing is book-length consistency. AuthorAgent ships a tiered memory system:
 
 - **CORE** — a budgeted, always-in-prompt digest: active chapter state, the characters this scene touches, open plot threads, your style fingerprint
 - **ARCHIVAL** — full-text search over the entire manuscript and past work, pulled in on demand ("what happened in chapter 12?" actually works)
@@ -83,8 +72,8 @@ The unsolved problem of AI writing is book-length consistency. Fibb ships a tier
 ## Quick Start
 
 ```bash
-git clone https://github.com/Ckokoski/Fibb.git fibb
-cd fibb
+git clone https://github.com/Ckokoski/Fibb.git
+cd authoragent
 npm install
 npm start
 
@@ -93,7 +82,7 @@ npm start
 # Click ✨ Start a Book
 ```
 
-> **First run:** Fibb generates a vault encryption key and stores it **outside the repo** (`%LOCALAPPDATA%\AuthorClaw\vault.key` on Windows, `~/.authorclaw/vault.key` elsewhere) so your encrypted API keys never sync to cloud drives. The Getting Started checklist on the home screen walks you through the rest.
+> **First run:** AuthorAgent generates a vault encryption key and stores it **outside the repo** (`%LOCALAPPDATA%\AuthorClaw\vault.key` on Windows, `~/.authorclaw/vault.key` elsewhere) so your encrypted API keys never sync to cloud drives. The Getting Started checklist on the home screen walks you through the rest.
 
 See [QUICKSTART.md](QUICKSTART.md) for the full guide.
 
@@ -112,9 +101,14 @@ Per-stage cost routing is automatic: outlines and research use free models, draf
 
 ## Dashboard
 
-Fibb has one home: the conversation. A slim rail holds Chat, Books, Ideas, Review, and Settings; the
-Tonight panel shows what Fibb will do while you sleep. The previous dashboard is still reachable at
-`/legacy` during the transition.
+Six panels, no clutter:
+
+- **Home** — Start a Book, writing momentum (streak/words), your active books with "Continue writing →", getting-started checklist
+- **Books** — your library; each book opens the journey view
+- **Personas** — pen names, voices, per-persona activity
+- **Library** — uploads and compiled outputs
+- **Tools** — every tool available standalone (Revise & Critique / Craft / Publishing & Marketing) for one-off use outside a book
+- **Settings** — Connections, Integrations, Automation, Data & Memory, Preferences
 
 ## Security
 
