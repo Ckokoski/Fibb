@@ -1,7 +1,7 @@
 ---
 name: dialogue
 description: Craft authentic dialogue with distinct character voices and subtext
-author: Fibb
+author: AuthorAgent
 version: 1.0.0
 triggers:
   - "dialogue"

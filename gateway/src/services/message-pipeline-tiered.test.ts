@@ -126,10 +126,7 @@ function makeDeps(opts: {
       detectFromMessage: async () => [],
       buildContext: () => opts.preferences ?? '',
     },
-    chatHistory: { load: async () => [], save: async () => {} },
-    facts: { render: () => '', extractFromTurn: async () => {} },
-    companion: { getActive: () => ({ id: 'nib', look: 'nib', name: 'Fibb', voicePreset: 'narrator_warm', tagline: 't', image: '/mascots/nib.webp' }), getVoicePreset: () => 'narrator_warm' },
-    soul: { getFullContext: () => 'SOUL_IDENTITY_TEXT', getFullContextFor: () => 'SOUL_IDENTITY_TEXT' },
+    soul: { getFullContext: () => 'SOUL_IDENTITY_TEXT' },
     memory: {
       getRelevant: async () => 'BOOK_BIBLE_MEMORY',
       getActiveProject: async () => opts.activeProject ?? null,
@@ -319,7 +316,7 @@ describe('total budget guard trim ordering (Chunk B2)', () => {
     expect(system).toContain('SOUL_IDENTITY_TEXT');       // soul
     expect(system).toContain('# CORE STORY MEMORY');      // CORE block
     expect(system).toContain('ACTIVE_PROJECT_BLURB');     // active project
-    expect(system).toContain('# How you work');          // how-you-work section
+    expect(system).toContain('# Security Rules');         // security section
   });
 
   it('drops ONLY lessons (highest-to-trim) when a single drop suffices — prefs/user-model survive', async () => {

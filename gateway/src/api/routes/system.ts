@@ -15,7 +15,7 @@ export function registerSystemRoutes(ctx: ApiContext): void {
     res.json({
       status: 'ok',
       version: '4.0.0',
-      name: 'Fibb',
+      name: 'AuthorAgent',
       brand: 'Writing Secrets',
       uptime: process.uptime(),
       links: {
@@ -250,8 +250,6 @@ export function registerSystemRoutes(ctx: ApiContext): void {
       if (apiKeyNames.includes(key)) {
         refreshedProviders = await services.aiRouter.reinitialize();
       }
-
-      if (key === 'gemini_api_key' || key === 'elevenlabs_api_key') await services.tts?.refreshKeyCache();
 
       res.json({ success: true, key, refreshedProviders, warning: formatCheck.warning });
     } catch (error) {
@@ -619,7 +617,7 @@ export function registerSystemRoutes(ctx: ApiContext): void {
       done: soulPresent,
       hint: soulPresent
         ? 'SOUL.md is present.'
-        : 'Fibb ships with a default SOUL.md — customize it in workspace/soul/SOUL.md if you want a different personality.',
+        : 'AuthorAgent ships with a default SOUL.md — customize it in workspace/soul/SOUL.md if you want a different personality.',
     });
 
     // ── 4. At least one project created ──
@@ -662,7 +660,7 @@ export function registerSystemRoutes(ctx: ApiContext): void {
 
     // firstRun is driven by the CORE items only (provider + project). Voice
     // profile, soul, and Telegram are valuable but not required to start
-    // using Fibb, so they don't gate the "first run" banner.
+    // using AuthorAgent, so they don't gate the "first run" banner.
     const coreDone = hasProvider && hasProject;
 
     res.json({

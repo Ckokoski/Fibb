@@ -1,5 +1,5 @@
 /**
- * Fibb Revision Orchestrator
+ * AuthorAgent Revision Orchestrator
  *
  * Replaces the one-monolithic-revision approach with a coordinated set of
  * NARROW EXPERT PASSES. Each pass is a specialist: it owns its own checklist,

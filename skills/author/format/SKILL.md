@@ -1,7 +1,7 @@
 ---
 name: format
 description: Export manuscripts to DOCX, EPUB, PDF, KDP-ready formatting
-author: Fibb
+author: AuthorAgent
 version: 1.0.0
 triggers:
   - "format"

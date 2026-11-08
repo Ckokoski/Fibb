@@ -1,5 +1,5 @@
 /**
- * Fibb Research Lookup
+ * AuthorAgent Research Lookup
  *
  * Sourced research for authors writing about unfamiliar topics — e.g., a
  * fantasy author who needs to ground their pre-WWI Vienna scene, a thriller
@@ -145,7 +145,7 @@ export class ResearchLookupService {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://github.com/Ckokoski/authoragent',
-        'X-Title': 'Fibb',
+        'X-Title': 'AuthorAgent',
       },
       body: JSON.stringify({
         // OpenRouter slug for Perplexity Sonar Pro. Falls through to OpenRouter's

@@ -1,5 +1,5 @@
 /**
- * Fibb Context Engine
+ * AuthorAgent Context Engine
  * AI-powered chapter summarization, entity tracking, and continuity checking
  * for long-form fiction projects.
  */
