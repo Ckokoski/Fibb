@@ -70,6 +70,8 @@ import { CharacterAgentService } from './character-agent.js';
 import { RevisionOrchestrator } from './revision-orchestrator.js';
 import { LearningService } from './learning.js';
 import { ConfirmationGateService } from './confirmation-gate.js';
+import { TaskStore } from './tasks.js';
+import { NightShift } from './night-shift.js';
 
 /**
  * Shape of the object the gateway's getServices() returns to the API routes.
@@ -126,6 +128,8 @@ export interface GatewayServices {
   revisionOrchestrator: RevisionOrchestrator;
   learning: LearningService;
   confirmationGate: ConfirmationGateService;
+  tasks: TaskStore;
+  nightShift: NightShift;
 }
 
 /**
@@ -195,6 +199,8 @@ export class ServiceContainer {
   revisionOrchestrator!: RevisionOrchestrator;
   learning!: LearningService;
   confirmationGate!: ConfirmationGateService;
+  tasks!: TaskStore;
+  nightShift!: NightShift;
 
   /**
    * The object exposed to API routes. Identical keys/order to the former
@@ -252,6 +258,8 @@ export class ServiceContainer {
       revisionOrchestrator: this.revisionOrchestrator,
       learning: this.learning,
       confirmationGate: this.confirmationGate,
+      tasks: this.tasks,
+      nightShift: this.nightShift,
     };
   }
 }

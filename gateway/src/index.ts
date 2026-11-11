@@ -75,6 +75,8 @@ import { CharacterAgentService } from './services/character-agent.js';
 import { RevisionOrchestrator } from './services/revision-orchestrator.js';
 import { LearningService } from './services/learning.js';
 import { ConfirmationGateService } from './services/confirmation-gate.js';
+import { TaskStore } from './services/tasks.js';
+import { NightShift } from './services/night-shift.js';
 import { TelegramBridge } from './bridges/telegram.js';
 import { DiscordBridge } from './bridges/discord.js';
 import { createAPIRoutes } from './api/routes.js';
@@ -223,6 +225,10 @@ class FibbGateway {
   private set learning(v: LearningService) { this.services.learning = v; }
   private get confirmationGate(): ConfirmationGateService { return this.services.confirmationGate; }
   private set confirmationGate(v: ConfirmationGateService) { this.services.confirmationGate = v; }
+  private get tasks(): TaskStore { return this.services.tasks; }
+  private set tasks(v: TaskStore) { this.services.tasks = v; }
+  private get nightShift(): NightShift { return this.services.nightShift; }
+  private set nightShift(v: NightShift) { this.services.nightShift = v; }
 
   // The core chat pipeline. Owns per-channel conversation history and the
   // injection/rate-limit/context/routing/persistence/fallback flow. Built once
@@ -524,7 +530,63 @@ class FibbGateway {
       if (!this.sleepConsolidation) return { success: false, message: 'Sleep consolidation not initialized' };
       return this.sleepConsolidation.run(payload || {});
     });
+    // ── Night shift (Fibb P4c): queued work orders run unattended ──
+    // TaskStore.initialize() also re-queues any task a previous process left
+    // 'running' (recoverInterrupted).
+    this.tasks = new TaskStore(join(ROOT_DIR, 'workspace'));
+    await this.tasks.initialize();
+    await this.tasks.recoverInterrupted();
+    this.nightShift = new NightShift({
+      tasks: this.tasks,
+      run: async (prompt, onChunk) => {
+        let text = '';
+        await this.handleMessage(prompt, 'night-shift', (t) => { text = t; }, undefined, undefined, undefined, onChunk);
+        // The pipeline reports failures as reply text; surface them as errors
+        // so the task is marked failed instead of landing in review.
+        if (/^\s*(\[AI provider failure\]|⚠️ I detected a potential prompt injection|⏳ You're sending messages too quickly)/.test(text)) {
+          throw new Error(text.replace(/\s+/g, ' ').trim().slice(0, 300));
+        }
+        return text;
+      },
+      notify: (text) => {
+        try { this.broadcastTelegram(text); } catch (err) { logger.debug('night-shift telegram notify failed', err); }
+      },
+      onUpdate: (t) => {
+        try { this.io?.emit('task-update', t); } catch (err) { logger.debug('task-update emit failed', err); }
+      },
+    });
+    this.cronScheduler.registerHandler('night-shift', async () => {
+      const r = await this.nightShift.runQueued();
+      if (r.busy) return { success: true, message: 'Night shift already running' };
+      return { success: r.failed === 0, message: `Started ${r.started}, finished ${r.finished}, failed ${r.failed}` };
+    });
+    this.cronScheduler.registerHandler('queue-task', async (payload) => {
+      const title = typeof payload?.title === 'string' ? payload.title : '';
+      if (!title.trim()) return { success: false, message: 'queue-task needs a payload title' };
+      try {
+        const task = await this.tasks.add({
+          title,
+          detail: typeof payload?.detail === 'string' ? payload.detail : '',
+          source: 'schedule',
+          when: 'now',
+        });
+        const done = await this.nightShift.runTask(task.id);
+        return done?.status === 'review'
+          ? { success: true, message: `Finished "${task.title}", waiting for review` }
+          : { success: false, message: `Task "${task.title}" failed: ${done?.error || 'unknown error'}` };
+      } catch (err) {
+        return { success: false, message: String((err as any)?.message || err) };
+      }
+    });
     this.cronScheduler.start();
+    if (!this.cronScheduler.list().some(j => j.handler === 'night-shift')) {
+      try {
+        await this.cronScheduler.createJob({ name: 'Night shift', schedule: '0 2 * * *', handler: 'night-shift' });
+        logger.info('  ✓ Registered nightly night-shift cron (0 2 * * *)');
+      } catch (err) {
+        logger.warn(`  ⚠ Could not seed night-shift cron: ${(err as any)?.message || err}`);
+      }
+    }
     // Seed the daily sleep-consolidation job at 04:00 if it doesn't already
     // exist (idempotent across restarts) — mirrors the design's default schedule.
     if (!this.cronScheduler.list().some(j => j.handler === 'sleep-consolidation')) {

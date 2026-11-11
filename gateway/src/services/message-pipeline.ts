@@ -49,6 +49,29 @@ const CHAT_CORE_INJECTION_ENABLED = !['off', 'false', '0'].includes(
 const SYSTEM_PROMPT_SOFT_CAP = 24000;
 
 /**
+ * Channels that are not a person chatting (project engines, silent/system
+ * callers, overnight work orders). The no-AI chat shortcuts ("forget that",
+ * quick capture) are skipped on these.
+ */
+const NO_SHORTCUT_CHANNELS = ['projects', 'project-engine', 'goal-engine', 'conductor', 'api-silent', 'night-shift'];
+
+/**
+ * Quick capture: "idea: ..." saves an idea, "tonight: ..." queues overnight
+ * work. The keyword must be followed by a colon (or a comma for "tonight"), or
+ * by a dash that has whitespace after it, so ordinary sentences ("Tonight I
+ * wrote a lot", "idea of the book is...", "idea-driven plots") do not match.
+ * The body may span multiple lines.
+ */
+export function parseQuickCapture(text: string): { kind: 'idea' | 'tonight'; text: string } | null {
+  if (typeof text !== 'string') return null;
+  const idea = text.match(/^\s*idea\s*(?::|[-–—](?=\s))\s*(\S[\s\S]*)$/i);
+  if (idea) return { kind: 'idea', text: idea[1].trim() };
+  const tonight = text.match(/^\s*tonight\s*(?:[,:]|[-–—](?=\s))\s*(\S[\s\S]*)$/i);
+  if (tonight) return { kind: 'tonight', text: tonight[1].trim() };
+  return null;
+}
+
+/**
  * The pipeline owns the per-channel conversation history (moved off the
  * gateway with handleMessage). Keyed by channel/session to prevent
  * cross-contamination between Telegram users, web chat, and API callers.
@@ -162,7 +185,7 @@ export class MessagePipeline {
     }
 
     // ── "Forget that" — user-directed facts removal (no AI call) ──
-    if (!['projects', 'project-engine', 'goal-engine', 'conductor', 'api-silent'].includes(channel)) {
+    if (!NO_SHORTCUT_CHANNELS.includes(channel)) {
       const explicit = /^\s*fibb[,:]?\s*forget\b/i.test(content);
       let phrase: string | null = null;
       if (explicit) {
@@ -188,6 +211,36 @@ export class MessagePipeline {
         this.persistHistory(channel);
         respond(reply);
         return;
+      }
+    }
+
+    // ── Quick capture: "idea: ..." / "tonight: ..." (no AI call) ──
+    if (this.deps.tasks && !NO_SHORTCUT_CHANNELS.includes(channel)) {
+      const capture = parseQuickCapture(content);
+      if (capture) {
+        const title = capture.text.replace(/\s+/g, ' ').trim().slice(0, 80);
+        let reply: string | null = null;
+        try {
+          if (capture.kind === 'idea') {
+            await this.deps.tasks.add({ title, detail: capture.text, kind: 'idea', source: 'chat' });
+            reply = `Saved to Ideas: "${title}".`;
+          } else {
+            await this.deps.tasks.add({ title, detail: capture.text, kind: 'task', when: 'tonight', source: 'chat' });
+            reply = `Queued for tonight: "${title}". I'll have it ready for your review in the morning.`;
+          }
+        } catch (err) {
+          // Could not save: fall through to the AI path rather than lose the message.
+          logger.debug('quick capture failed', err);
+        }
+        if (reply !== null) {
+          const hist = await this.getHistory(channel);
+          hist.push({ role: 'user', content, timestamp: new Date() });
+          hist.push({ role: 'assistant', content: reply, timestamp: new Date() });
+          this.persistHistory(channel);
+          if (onChunk) onChunk(reply);
+          respond(reply);
+          return;
+        }
       }
     }
 
@@ -259,7 +312,11 @@ export class MessagePipeline {
     // ── Add to conversation history (skip for project engines + silent channels) ──
     // Project steps use their own context chain, not the chat history
     const isProjectChannel = channel === 'projects' || channel === 'project-engine' || channel === 'goal-engine';
-    const skipHistory = isProjectChannel || channel === 'conductor' || channel === 'api-silent';
+    // Night-shift work orders run unattended: like project steps they get a
+    // clean single-message array and never touch chat history, but (unlike
+    // project steps) they still stream so task progress can be tracked.
+    const isNightShift = channel === 'night-shift';
+    const skipHistory = isProjectChannel || isNightShift || channel === 'conductor' || channel === 'api-silent';
     // Per-channel conversation history prevents cross-contamination between
     // Telegram users, web chat, and API callers.
     const history = await this.getHistory(channel);
@@ -280,7 +337,7 @@ export class MessagePipeline {
     // ── Build messages array ──
     // Project steps get a CLEAN message array (just the step prompt)
     // Chat messages include conversation history for continuity
-    const messages = isProjectChannel
+    const messages = (isProjectChannel || isNightShift)
       ? [{ role: 'user' as const, content }]
       : history.map(m => ({
           role: m.role as 'user' | 'assistant',

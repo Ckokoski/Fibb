@@ -43,6 +43,7 @@ import { registerJudgeCharacterVoiceRoutes } from './routes/judge-character-voic
 import { registerResearchLookupRoutes } from './routes/research-lookup.js';
 import { registerStructuresPlotRoutes } from './routes/structures-plot.js';
 import { registerReaderPanelRoutes } from './routes/reader-panel.js';
+import { registerTaskRoutes } from './routes/tasks.js';
 
 export function createAPIRoutes(app: Application, gateway: any, rootDir?: string): void {
   const ctx = createApiContext(app, gateway, rootDir);
@@ -73,4 +74,5 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   registerResearchLookupRoutes(ctx);
   registerStructuresPlotRoutes(ctx);
   registerReaderPanelRoutes(ctx);
+  registerTaskRoutes(ctx);
 }
