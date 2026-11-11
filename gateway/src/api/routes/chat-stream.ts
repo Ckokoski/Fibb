@@ -1,6 +1,7 @@
 /**
  * POST /api/chat/stream — Server-Sent Events chat. Events:
  *   data: {"type":"chunk","content":"..."}   repeated
+ *   data: {"type":"tool","name":"...","status":"start|done|needs-approval","summary":"..."}
  *   data: {"type":"done","content":"<full text>"}
  *   data: {"type":"error","message":"..."}
  * GET /api/facts, DELETE /api/facts?phrase=... — the facts memory.
@@ -36,6 +37,8 @@ export function registerChatStreamRoutes(ctx: ApiContext): void {
         (full: string) => send({ type: 'done', content: full }),
         undefined, undefined, undefined,
         (chunk: string) => send({ type: 'chunk', content: chunk }),
+        (e: { name: string; status: string; summary: string }) =>
+          send({ type: 'tool', name: e.name, status: e.status, summary: e.summary }),
       );
     } catch (err: any) {
       const msg = String(err?.message || err);

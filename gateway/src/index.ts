@@ -77,6 +77,11 @@ import { LearningService } from './services/learning.js';
 import { ConfirmationGateService } from './services/confirmation-gate.js';
 import { TaskStore } from './services/tasks.js';
 import { NightShift } from './services/night-shift.js';
+import { ToolRegistry } from './services/tools/registry.js';
+import { ToolRunner } from './services/tools/runner.js';
+import { BrowserService } from './services/browser.js';
+import { GoogleService } from './services/google.js';
+import type { ToolEvent } from './services/message-pipeline.js';
 import { TelegramBridge } from './bridges/telegram.js';
 import { DiscordBridge } from './bridges/discord.js';
 import { createAPIRoutes } from './api/routes.js';
@@ -229,6 +234,14 @@ class FibbGateway {
   private set tasks(v: TaskStore) { this.services.tasks = v; }
   private get nightShift(): NightShift { return this.services.nightShift; }
   private set nightShift(v: NightShift) { this.services.nightShift = v; }
+  private get toolRegistry(): ToolRegistry { return this.services.toolRegistry; }
+  private set toolRegistry(v: ToolRegistry) { this.services.toolRegistry = v; }
+  private get toolRunner(): ToolRunner { return this.services.toolRunner; }
+  private set toolRunner(v: ToolRunner) { this.services.toolRunner = v; }
+  private get browser(): BrowserService { return this.services.browser; }
+  private set browser(v: BrowserService) { this.services.browser = v; }
+  private get google(): GoogleService { return this.services.google; }
+  private set google(v: GoogleService) { this.services.google = v; }
 
   // The core chat pipeline. Owns per-channel conversation history and the
   // injection/rate-limit/context/routing/persistence/fallback flow. Built once
@@ -763,6 +776,27 @@ class FibbGateway {
     await this.confirmationGate.initialize();
     logger.info(`  ✓ Confirmation gate: ${this.confirmationGate.list({ status: 'pending' }).length} pending`);
 
+    // ── Fibb P4c: tools (provider-agnostic), Fibb's browser, Google ──
+    // Read tools run at once; write tools only ever run from the approval
+    // executor, after the author approves them in the app.
+    this.toolRegistry = new ToolRegistry();
+    this.browser = new BrowserService({ workspaceDir: join(ROOT_DIR, 'workspace') });
+    this.google = new GoogleService({
+      vault: this.vault,
+      workspaceDir: join(ROOT_DIR, 'workspace'),
+      port: Number(this.config.get('server.port', 3847)),
+    });
+    await this.google.initialize();
+    for (const tool of [...this.browser.tools(), ...this.google.tools()]) this.toolRegistry.register(tool);
+    this.toolRunner = new ToolRunner({
+      registry: this.toolRegistry,
+      gate: this.confirmationGate,
+      injection: this.injectionDetector,
+      audit: this.audit,
+    });
+    this.toolRunner.registerApprovalExecutor();
+    logger.info(`  ✓ Tools: ${this.toolRegistry.list().length} registered (browser ${this.browser.status().available ? 'ready' : 'unavailable'}, Google ${this.google.isConnected() ? 'connected' : 'not connected'})`);
+
     // ── Phase 7: Heartbeat ──
     this.heartbeat = new HeartbeatService(this.config.get('heartbeat'), this.memory, join(ROOT_DIR, 'workspace'));
 
@@ -1151,6 +1185,7 @@ class FibbGateway {
     overrideTaskType?: string,
     preferredProvider?: string,
     onChunk?: (chunk: string) => void,
+    onTool?: (e: ToolEvent) => void,
   ): Promise<void> {
     // Thin delegate — the full chat pipeline (injection scan, rate limit,
     // preference auto-detect, context build, task classification, system-prompt
@@ -1166,6 +1201,7 @@ class FibbGateway {
       overrideTaskType,
       preferredProvider,
       onChunk,
+      onTool,
     );
   }
 
@@ -2372,6 +2408,7 @@ class FibbGateway {
     this.heartbeat?.stop();
     this.telegram?.disconnect();
     this.discord?.disconnect();
+    try { await this.browser?.close(); } catch { /* best effort */ }
     await this.activityLog?.log({
       type: 'system',
       source: 'internal',

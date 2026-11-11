@@ -55,6 +55,7 @@
     "kokoro-js": "^1.2.1",
     "multer": "^2.1.0",
     "node-edge-tts": "^1.2.12",
+    "playwright-core": "^1.65.0",
     "socket.io": "^4.7.0",
     "tsx": "^4.7.0"
   },

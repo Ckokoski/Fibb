@@ -72,6 +72,10 @@ import { LearningService } from './learning.js';
 import { ConfirmationGateService } from './confirmation-gate.js';
 import { TaskStore } from './tasks.js';
 import { NightShift } from './night-shift.js';
+import { ToolRegistry } from './tools/registry.js';
+import { ToolRunner } from './tools/runner.js';
+import { BrowserService } from './browser.js';
+import { GoogleService } from './google.js';
 
 /**
  * Shape of the object the gateway's getServices() returns to the API routes.
@@ -130,6 +134,10 @@ export interface GatewayServices {
   confirmationGate: ConfirmationGateService;
   tasks: TaskStore;
   nightShift: NightShift;
+  toolRegistry: ToolRegistry;
+  toolRunner: ToolRunner;
+  browser: BrowserService;
+  google: GoogleService;
 }
 
 /**
@@ -201,6 +209,10 @@ export class ServiceContainer {
   confirmationGate!: ConfirmationGateService;
   tasks!: TaskStore;
   nightShift!: NightShift;
+  toolRegistry!: ToolRegistry;
+  toolRunner!: ToolRunner;
+  browser!: BrowserService;
+  google!: GoogleService;
 
   /**
    * The object exposed to API routes. Identical keys/order to the former
@@ -260,6 +272,10 @@ export class ServiceContainer {
       confirmationGate: this.confirmationGate,
       tasks: this.tasks,
       nightShift: this.nightShift,
+      toolRegistry: this.toolRegistry,
+      toolRunner: this.toolRunner,
+      browser: this.browser,
+      google: this.google,
     };
   }
 }
