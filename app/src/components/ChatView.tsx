@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { streamChat, speak } from '../lib/api';
+import { streamChat, speak, getWritingStats, type Facts, type WritingStats } from '../lib/api';
 import { startListening, stopPlayback, playUrl, micSupported, type Listener } from '../lib/voice';
 import { Message, type ChatMessage } from './Message';
 import { Composer } from './Composer';
 import { FirstRunCard } from './FirstRunCard';
+import { Welcome } from './Welcome';
 
 const STORE = 'fibb_chat_webchat';
 const GREETING = "Hi, I'm Fibb. I keep your book straight, draft when you ask, and work on it while you sleep. What's your name, and what are you working on?";
@@ -26,12 +27,18 @@ function load(): ChatMessage[] {
   return [{ id: 'greet', role: 'assistant', content: GREETING }];
 }
 
-export function ChatView({ onTurn, active, companionName, readAloud, handsFree, voicePreset, onBusy, onSpeaking, onListening, onCelebrate, onOpenTonight }: {
+export function ChatView({ facts, onWelcome, onTurn, active, companionName, readAloud, handsFree, voicePreset, onBusy, onSpeaking, onListening, onCelebrate, onOpenTonight }: {
+  facts: Facts | null; onWelcome: (w: boolean) => void;
   onTurn: () => void; active: boolean; companionName: string; readAloud: boolean; handsFree: boolean; voicePreset?: string;
   onBusy: (b: boolean) => void; onSpeaking: (b: boolean) => void; onListening: (b: boolean) => void; onCelebrate: () => void; onOpenTonight: () => void;
 }) {
   const [msgs, setMsgs] = useState<ChatMessage[]>(load);
   const [busy, setBusy] = useState(false);
+  // Each time the app opens, Fibb greets first; the thread appears once the author says something.
+  const [welcome, setWelcome] = useState(true);
+  const [stats, setStats] = useState<WritingStats>({});
+  useEffect(() => { void getWritingStats().then(setStats); }, []);
+  useEffect(() => { onWelcome(welcome); }, [welcome, onWelcome]);
   const [needsProvider, setNeedsProvider] = useState(false);
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState('');
@@ -60,7 +67,7 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
     listenerRef.current = startListening(
       setInterim,
       (final) => { setListening(false); setInterim(''); listenerRef.current = null; if (final.trim()) void sendRef.current(final.trim(), true); },
-      (msg) => { setListening(false); setInterim(''); listenerRef.current = null; setMsgs(m => [...m, { id: crypto.randomUUID(), role: 'assistant', content: `Mic problem: ${msg}` }]); },
+      (msg) => { setWelcome(false); setListening(false); setInterim(''); listenerRef.current = null; setMsgs(m => [...m, { id: crypto.randomUUID(), role: 'assistant', content: `Mic problem: ${msg}` }]); },
     );
   };
   toggleMicRef.current = toggleMic;
@@ -75,6 +82,7 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
   const send = async (text: string, spoken = false) => {
     const uid = crypto.randomUUID();
     const aid = crypto.randomUUID();
+    setWelcome(false);
     setMsgs(m => [...m, { id: uid, role: 'user', content: text }, { id: aid, role: 'assistant', content: '', streaming: true }]);
     setBusy(true);
     let acc = '';
@@ -120,18 +128,22 @@ export function ChatView({ onTurn, active, companionName, readAloud, handsFree, 
 
   return (
     <>
-      <div className="thread">
-        <div className="thread-inner">
-          <div className="day">Today</div>
-          {msgs.map(m => <Message key={m.id} m={m} onRead={t => { void readOut(t); }} />)}
-          {needsProvider && <FirstRunCard onDone={() => { setNeedsProvider(false); send('Thanks, you’re connected now. Say hi?'); }} />}
-          <div ref={endRef} />
+      {welcome && !needsProvider ? (
+        <Welcome facts={facts} stats={stats} hasHistory={msgs.length > 1} disabled={busy}
+          onSend={t => { void send(t); }} onTonight={onOpenTonight} onEarlier={() => setWelcome(false)} />
+      ) : (<>
+        <div className="thread">
+          <div className="thread-inner">
+            {msgs.map(m => <Message key={m.id} m={m} onRead={t => { void readOut(t); }} />)}
+            {needsProvider && <FirstRunCard onDone={() => { setNeedsProvider(false); send('Thanks, you’re connected now. Say hi?'); }} />}
+            <div ref={endRef} />
+          </div>
         </div>
-      </div>
-      <div className="chips">
-        <button className="chip tonight" onClick={onOpenTonight}>Tonight</button>
-        {chips.map(c => <button key={c} className="chip" onClick={() => onChip(c)} disabled={busy}>{c}</button>)}
-      </div>
+        <div className="chips">
+          <button className="chip tonight" onClick={onOpenTonight}>Tonight</button>
+          {chips.map(c => <button key={c} className="chip" onClick={() => onChip(c)} disabled={busy}>{c}</button>)}
+        </div>
+      </>)}
       <Composer onSend={t => send(t)} disabled={busy} listening={listening} interim={interim} onMic={toggleMic} micAvailable={micSupported()} micDisabled={busy} />
     </>
   );

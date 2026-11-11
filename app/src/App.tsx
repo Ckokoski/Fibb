@@ -44,6 +44,8 @@ export function App() {
   const [speaking, setSpeaking] = useState(false);
   const [listening, setListening] = useState(false);
   const [tonight, setTonight] = useState(false);
+  const [welcome, setWelcome] = useState(true);
+  const [streak, setStreak] = useState(0);
   const [celebrateUntil, setCelebrateUntil] = useState(0);
   const [, setTick] = useState(0);
   const lastStreak = useRef<number | null>(null);
@@ -75,7 +77,7 @@ export function App() {
       if (!alive) return;
       const n = Number(s.currentStreakDays ?? 0);
       if (lastStreak.current !== null && n > lastStreak.current) celebrate();
-      lastStreak.current = n;
+      lastStreak.current = n; setStreak(n);
     });
     poll();
     const id = window.setInterval(poll, POLL_MS);
@@ -89,22 +91,24 @@ export function App() {
 
   return (
     <div className="shell">
+      <div className="ambient" aria-hidden="true"><i /><i /></div>
       <Rail view={view} onChange={setView} companion={companion} />
       <div className="page">
         <header className="topbar">
           <span className="title">Fibb</span>
           <span className="pill" title="Fibb is in beta; expect rough edges">Beta</span>
           <div className="right">
+            {streak > 0 && <button className="streak-chip" onClick={() => setTonight(true)} title="Open Tonight">🔥 <b>{streak}</b> day streak</button>}
             <IconButton label="Read aloud" pressed={voice.readAloud} on={voice.readAloud} onClick={() => setVoice(v => ({ ...v, readAloud: !v.readAloud }))}>{Icons.speaker}</IconButton>
             {micAvailable && <IconButton label="Hands-free" pressed={voice.handsFree} on={voice.handsFree} onClick={() => setVoice(v => ({ ...v, handsFree: !v.handsFree }))}>{Icons.wave}</IconButton>}
             <IconButton label="Tonight" pressed={tonight} on={tonight} onClick={() => setTonight(t => !t)}>{Icons.moon}</IconButton>
             <IconButton label={`Theme: ${theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'Auto'}`} onClick={() => setTheme(t => cycleTheme(t))}>{themeIcon}</IconButton>
           </div>
         </header>
-        <main className="main">
-          <Hero c={companion} state={mascotState} line2={line2} compact={view !== 'chat'} />
+        <main className={`main${view === 'chat' && welcome ? ' is-welcome' : ''}`}>
+          <Hero c={companion} state={mascotState} line2={line2} compact={view !== 'chat'} big={view === 'chat' && welcome} />
           <div className="view" hidden={view !== 'chat'}>
-            <ChatView active={view === 'chat'} onTurn={() => setTurn(t => t + 1)} companionName="Fibb"
+            <ChatView facts={facts} onWelcome={setWelcome} active={view === 'chat'} onTurn={() => setTurn(t => t + 1)} companionName="Fibb"
               readAloud={voice.readAloud} handsFree={voice.handsFree} voicePreset={companion?.voicePreset}
               onBusy={setBusy} onSpeaking={setSpeaking} onListening={setListening} onCelebrate={celebrate} onOpenTonight={() => setTonight(true)} />
           </div>
