@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { cue, setSounds, soundsOn } from '../lib/sound';
 import {
   deleteVaultKey, getModels, getVaultKeys, refreshProviders, saveVaultKey, setModel,
   type Companion,
@@ -64,6 +65,7 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
   const [online, setOnline] = useState<string[] | null>(null);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState('');
+  const [sounds, setSoundsState] = useState(soundsOn);
 
   const reload = useCallback(() => {
     getVaultKeys().then(setKeys).catch(() => {});
@@ -124,6 +126,13 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
         <div className="t">Appearance</div>
         <div className="s">Fibb is always Fibb. Pick the look you like.</div>
         <LookPicker onPicked={onCompanionChanged} />
+      </section>
+
+      <section className="card">
+        <div className="t">Sounds</div>
+        <label className="voicerow"><span className="s" style={{ margin: 0 }}>A soft chime when Fibb finishes a reply or celebrates with you.</span>
+          <input type="checkbox" checked={sounds} aria-label="Play soft sounds" onChange={e => { setSounds(e.target.checked); setSoundsState(e.target.checked); if (e.target.checked) cue('done', true); }} />
+        </label>
       </section>
 
       <section className="card">

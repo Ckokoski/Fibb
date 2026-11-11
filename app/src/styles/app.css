@@ -223,6 +223,30 @@ input[type="radio"], input[type="checkbox"] { accent-color: var(--accent); }
 .main.is-welcome .hero { flex: 1 1 0; justify-content: flex-end; min-height: 170px; }
 .main.is-welcome .view { flex: 1.5 1 0; }
 
+/* Nib looks where the pointer is, talks with the audio, and dozes when left alone */
+.hero.idle .hero-img [id$="-gaze"] > g, .hero.speaking .hero-img [id$="-gaze"] > g { transform: translate(calc(var(--gx, 0) * 1px), calc(var(--gy, 0) * 1px)); transition: transform .18s ease-out; }
+.nib-talk { transform-box: fill-box; transform-origin: 50% 20%; transform: scale(calc(.55 + var(--mouth, 0) * .45), var(--mouth, 0)); opacity: 0; }
+.hero.speaking .nib-talk { opacity: 1; }
+.hero.speaking .hero-img.on { animation: none; }
+.hero.dozing .hero-img [id$="-left-gaze"], .hero.dozing .hero-img [id$="-right-gaze"] { animation: none; transform: scaleY(.06); transition: transform .5s ease-in; }
+.hero.dozing .hero-float { animation-duration: 8s; }
+.hero.dozing .hero-img [id$="-tail-shape"] { animation-duration: 9s; }
+.zzz { position: absolute; right: 6%; top: 2%; font-weight: 700; font-size: 15px; color: var(--accent-2); animation: zzz 3s ease-in-out infinite; }
+@keyframes zzz { 0% { opacity: 0; transform: translate(0, 6px) scale(.7); } 40% { opacity: 1; } 100% { opacity: 0; transform: translate(10px, -16px) scale(1.2); } }
+
+/* Quick command bar */
+.cmd-scrim { position: fixed; inset: 0; z-index: 40; background: rgba(15,17,32,.32); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); display: flex; justify-content: center; align-items: flex-start; padding: 16vh 16px 0; animation: fade .2s ease-out; }
+@keyframes fade { from { opacity: 0; } }
+.cmd { width: 100%; max-width: 560px; background: var(--surface); border: 1px solid var(--line); border-radius: 28px; box-shadow: var(--shadow); overflow: hidden; animation: rise .35s var(--ease); }
+.cmd-input { width: 100%; border: 0; outline: 0; background: none; color: var(--text); font-size: 17px; padding: 20px 24px 14px; }
+.cmd-input::placeholder { color: var(--text-3); }
+.cmd-list { list-style: none; margin: 0; padding: 0 8px 10px; max-height: 46vh; overflow-y: auto; }
+.cmd-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-radius: 16px; font-size: 14px; color: var(--text-2); cursor: pointer; }
+.cmd-list li.on { background: var(--accent-dim); color: var(--text); }
+.cmd-list li.none { cursor: default; color: var(--text-3); }
+.cmd-list li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd-list kbd { font: inherit; font-size: 11px; font-weight: 600; color: var(--text-3); background: var(--surface-2); border-radius: 8px; padding: 2px 8px; flex: 0 0 auto; }
+
 /* Tonight drawer (desktop) */
 .drawer { position: fixed; top: 14px; right: 14px; bottom: 14px; width: 350px; max-width: 92vw; background: var(--surface); border: 1px solid var(--line); border-radius: 28px; box-shadow: var(--shadow); transform: translateX(calc(100% + 20px)); visibility: hidden; transition: transform .4s var(--ease), visibility 0s linear .4s; z-index: 21; padding: 22px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
 .drawer.open { transform: none; visibility: visible; transition: transform .4s var(--ease), visibility 0s; }

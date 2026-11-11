@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Rail, type View } from './components/Rail';
-import { ChatView } from './components/ChatView';
+import { ChatView, type ChatApi } from './components/ChatView';
+import { CommandBar, type Command } from './components/CommandBar';
+import { cue } from './lib/sound';
 import { TonightSheet } from './components/TonightSheet';
 import { TonightDrawer } from './components/TonightDrawer';
 import { SettingsView } from './components/SettingsView';
@@ -45,6 +47,8 @@ export function App() {
   const [listening, setListening] = useState(false);
   const [tonight, setTonight] = useState(false);
   const [welcome, setWelcome] = useState(true);
+  const [cmd, setCmd] = useState(false);
+  const chat = useRef<ChatApi | null>(null);
   const [streak, setStreak] = useState(0);
   const [celebrateUntil, setCelebrateUntil] = useState(0);
   const [, setTick] = useState(0);
@@ -64,7 +68,7 @@ export function App() {
 
   // Celebrate for 4 s. A re-render is scheduled at expiry so the state falls back to idle.
   const celebrate = useCallback(() => {
-    setCelebrateUntil(Date.now() + CELEBRATE_MS);
+    setCelebrateUntil(Date.now() + CELEBRATE_MS); cue('celebrate');
     if (celebrateTimer.current) window.clearTimeout(celebrateTimer.current);
     celebrateTimer.current = window.setTimeout(() => setTick(t => t + 1), CELEBRATE_MS + 50);
   }, []);
@@ -84,6 +88,25 @@ export function App() {
     return () => { alive = false; window.clearInterval(id); };
   }, [turn, celebrate]);
 
+  // Ctrl+K or Cmd+K opens the quick command bar from anywhere.
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setCmd(o => !o); } };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
+  const say = useCallback((t: string) => { setView('chat'); chat.current?.say(t); }, []);
+  const commands: Command[] = [
+    { id: 'tonight', label: 'Open Tonight', run: () => setTonight(true) },
+    { id: 'read', label: 'Read the last reply aloud', run: () => chat.current?.readLast() },
+    { id: 'aloud', label: voice.readAloud ? 'Turn read aloud off' : 'Turn read aloud on', run: () => setVoice(v => ({ ...v, readAloud: !v.readAloud })) },
+    { id: 'theme', label: 'Switch theme', run: () => setTheme(t => cycleTheme(t)) },
+    { id: 'go-chat', label: 'Go to Chat', run: () => setView('chat') },
+    { id: 'go-books', label: 'Go to Books', run: () => setView('books') },
+    { id: 'go-ideas', label: 'Go to Ideas', run: () => setView('ideas') },
+    { id: 'go-review', label: 'Go to Review', run: () => setView('review') },
+    { id: 'go-settings', label: 'Go to Settings', run: () => setView('settings') },
+  ];
+
   const book = facts?.books?.[0];
   const line2 = book ? `${book.title}${book.chapter ? ` · ch. ${book.chapter}` : ''}` : undefined;
   const mascotState: MascotStateName | 'speaking' = listening ? 'listening' : busy ? 'thinking' : speaking ? 'speaking' : celebrateUntil > Date.now() ? 'celebrating' : 'idle';
@@ -99,6 +122,7 @@ export function App() {
           <span className="pill" title="Fibb is in beta; expect rough edges">Beta</span>
           <div className="right">
             {streak > 0 && <button className="streak-chip" onClick={() => setTonight(true)} title="Open Tonight">🔥 <b>{streak}</b> day streak</button>}
+            <IconButton label="Quick command (Ctrl+K)" onClick={() => setCmd(true)}>{Icons.command}</IconButton>
             <IconButton label="Read aloud" pressed={voice.readAloud} on={voice.readAloud} onClick={() => setVoice(v => ({ ...v, readAloud: !v.readAloud }))}>{Icons.speaker}</IconButton>
             {micAvailable && <IconButton label="Hands-free" pressed={voice.handsFree} on={voice.handsFree} onClick={() => setVoice(v => ({ ...v, handsFree: !v.handsFree }))}>{Icons.wave}</IconButton>}
             <IconButton label="Tonight" pressed={tonight} on={tonight} onClick={() => setTonight(t => !t)}>{Icons.moon}</IconButton>
@@ -108,7 +132,7 @@ export function App() {
         <main className={`main${view === 'chat' && welcome ? ' is-welcome' : ''}`}>
           <Hero c={companion} state={mascotState} line2={line2} compact={view !== 'chat'} big={view === 'chat' && welcome} />
           <div className="view" hidden={view !== 'chat'}>
-            <ChatView facts={facts} onWelcome={setWelcome} active={view === 'chat'} onTurn={() => setTurn(t => t + 1)} companionName="Fibb"
+            <ChatView apiRef={chat} facts={facts} onWelcome={setWelcome} active={view === 'chat'} onTurn={() => setTurn(t => t + 1)} companionName="Fibb"
               readAloud={voice.readAloud} handsFree={voice.handsFree} voicePreset={companion?.voicePreset}
               onBusy={setBusy} onSpeaking={setSpeaking} onListening={setListening} onCelebrate={celebrate} onOpenTonight={() => setTonight(true)} />
           </div>
@@ -118,6 +142,7 @@ export function App() {
           {view === 'review' && <EmptyState title="Nothing to review" text="Overnight work will wait here for your yes." />}
         </main>
       </div>
+      <CommandBar open={cmd} onClose={() => setCmd(false)} commands={commands} onSay={say} />
       {narrow
         ? <TonightSheet open={tonight} onClose={() => setTonight(false)} refreshKey={turn} companion={companion} />
         : <TonightDrawer open={tonight} onClose={() => setTonight(false)} refreshKey={turn} companion={companion} />}

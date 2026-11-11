@@ -5,6 +5,9 @@ import { Message, type ChatMessage } from './Message';
 import { Composer } from './Composer';
 import { FirstRunCard } from './FirstRunCard';
 import { Welcome } from './Welcome';
+import { cue } from '../lib/sound';
+
+export interface ChatApi { say: (text: string) => void; readLast: () => void }
 
 const STORE = 'fibb_chat_webchat';
 const GREETING = "Hi, I'm Fibb. I keep your book straight, draft when you ask, and work on it while you sleep. What's your name, and what are you working on?";
@@ -27,7 +30,8 @@ function load(): ChatMessage[] {
   return [{ id: 'greet', role: 'assistant', content: GREETING }];
 }
 
-export function ChatView({ facts, onWelcome, onTurn, active, companionName, readAloud, handsFree, voicePreset, onBusy, onSpeaking, onListening, onCelebrate, onOpenTonight }: {
+export function ChatView({ apiRef, facts, onWelcome, onTurn, active, companionName, readAloud, handsFree, voicePreset, onBusy, onSpeaking, onListening, onCelebrate, onOpenTonight }: {
+  apiRef?: { current: ChatApi | null };
   facts: Facts | null; onWelcome: (w: boolean) => void;
   onTurn: () => void; active: boolean; companionName: string; readAloud: boolean; handsFree: boolean; voicePreset?: string;
   onBusy: (b: boolean) => void; onSpeaking: (b: boolean) => void; onListening: (b: boolean) => void; onCelebrate: () => void; onOpenTonight: () => void;
@@ -73,10 +77,13 @@ export function ChatView({ facts, onWelcome, onTurn, active, companionName, read
   toggleMicRef.current = toggleMic;
 
   const readOut = async (t: string) => {
+    const tok = ++speakTokenRef.current;
+    setSpeaking(true);
     try {
       const u = await speak(t, settingsRef.current.voicePreset);
       if (u && !listenerRef.current) await playUrl(u);
     } catch { /* ignore audio errors */ }
+    finally { if (speakTokenRef.current === tok) setSpeaking(false); }
   };
 
   const send = async (text: string, spoken = false) => {
@@ -100,7 +107,7 @@ export function ChatView({ facts, onWelcome, onTurn, active, companionName, read
     } finally {
       setBusy(false);
       onTurn();
-      if (CELEBRATE_RE.test(acc)) onCelebrate();
+      if (CELEBRATE_RE.test(acc)) onCelebrate(); else if (acc) cue('done');
     }
     // Spoken reply runs after the composer is free; audio never blocks it.
     const st = settingsRef.current;
@@ -124,6 +131,7 @@ export function ChatView({ facts, onWelcome, onTurn, active, companionName, read
     ? ["I'm working on a novel", 'Help me find a premise', "What can you do?"]
     : ['Check the last chapter', "What's on tonight?", 'Brainstorm a scene', READ_BACK];
   const lastReply = [...msgs].reverse().find(m => m.role === 'assistant' && m.content && !m.streaming);
+  if (apiRef) apiRef.current = { say: t => { if (!busy) void send(t); }, readLast: () => { if (lastReply) void readOut(lastReply.content); } };
   const onChip = (c: string) => { if (c === READ_BACK) { if (lastReply) void readOut(lastReply.content); } else send(c); };
 
   return (
