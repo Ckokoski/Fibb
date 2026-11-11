@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import type { Facts, WritingStats } from '../lib/api';
+import type { Task } from '../lib/tasks';
 
 const ic = (d: JSX.Element) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{d}</svg>;
 const pen = ic(<><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></>);
@@ -14,8 +15,8 @@ export function greetingFor(hour: number): string {
   return hour < 5 ? 'Still up' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 }
 
-export function Welcome({ facts, stats, hasHistory, disabled, onSend, onTonight, onEarlier }: {
-  facts: Facts | null; stats: WritingStats; hasHistory: boolean; disabled: boolean;
+export function Welcome({ facts, stats, review = [], onOpenTasks, hasHistory, disabled, onSend, onTonight, onEarlier }: {
+  facts: Facts | null; stats: WritingStats; review?: Task[]; onOpenTasks?: () => void; hasHistory: boolean; disabled: boolean;
   onSend: (t: string) => void; onTonight: () => void; onEarlier: () => void;
 }) {
   const b = facts?.books?.[0];
@@ -39,6 +40,25 @@ export function Welcome({ facts, stats, hasHistory, disabled, onSend, onTonight,
       { icon: spark, title: 'Help me find a premise', hint: 'Start from a spark', send: 'Help me find a premise' },
       { icon: help, title: 'What can you do?', hint: 'A quick tour', send: 'What can you do?' },
     ];
+  // Morning brief: finished work waiting for a yes takes over the greeting.
+  if (review.length > 0) {
+    const first = (t: Task) => (t.result || '').split('\n').map(l => l.replace(/^[#>*\-\s]+/, '').trim()).find(Boolean) || 'Ready to read';
+    return (
+      <div className="welcome">
+        <h1>{greetingFor(new Date().getHours())}{name}.<br /><span>{review.length === 1 ? 'I finished something for you.' : `I finished ${review.length} things for you.`}</span></h1>
+        <p className="sub">Read each one, then keep it or throw it away.</p>
+        <div className="wcards">
+          {review.slice(0, 3).map(t => (
+            <button key={t.id} className="wcard" onClick={onOpenTasks}>
+              <div className="ic">{moon}</div>
+              <div><b>{t.title}</b><small>{first(t).slice(0, 90)}</small></div>
+            </button>
+          ))}
+        </div>
+        <button className="earlier" onClick={onEarlier}>{hasHistory ? 'Back to our conversation' : 'Start chatting'}</button>
+      </div>
+    );
+  }
   return (
     <div className="welcome">
       <h1>{greetingFor(new Date().getHours())}{name}.<br /><span>{line}</span></h1>

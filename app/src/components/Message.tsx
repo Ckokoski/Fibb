@@ -8,6 +8,13 @@ DOMPurify.addHook('afterSanitizeAttributes', n => {
   if (n.tagName === 'A') { n.setAttribute('target', '_blank'); n.setAttribute('rel', 'noopener noreferrer'); }
 });
 
+const SANITIZE = { USE_PROFILES: { html: true }, FORBID_TAGS: ['img', 'svg', 'math', 'form', 'input', 'button', 'textarea', 'select', 'option'], FORBID_ATTR: ['style'] };
+/** Sanitized Markdown for model-written text shown outside the thread (task results). */
+export function Md({ text }: { text: string }) {
+  const html = useMemo(() => DOMPurify.sanitize(marked.parse(text || '') as string, SANITIZE), [text]);
+  return <div className="md" dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
 export function Message({ m, onRead }: { m: ChatMessage; onRead?: (text: string) => void }) {
   // Hook runs before the role branch so hook order is stable.
   const html = useMemo(

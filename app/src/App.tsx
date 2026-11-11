@@ -3,6 +3,8 @@ import { Rail, type View } from './components/Rail';
 import { ChatView, type ChatApi } from './components/ChatView';
 import { CommandBar, type Command } from './components/CommandBar';
 import { cue } from './lib/sound';
+import { IdeasView, TasksView } from './components/Work';
+import { groupTasks, useWork } from './lib/tasks';
 import { TonightSheet } from './components/TonightSheet';
 import { TonightDrawer } from './components/TonightDrawer';
 import { SettingsView } from './components/SettingsView';
@@ -49,6 +51,15 @@ export function App() {
   const [welcome, setWelcome] = useState(true);
   const [cmd, setCmd] = useState(false);
   const chat = useRef<ChatApi | null>(null);
+  const work = useWork(turn);
+  const waiting = groupTasks(work.tasks).review.length + work.approvals.length;
+  // A chime when overnight or background work lands for review.
+  const lastReview = useRef<number | null>(null);
+  useEffect(() => {
+    const n = groupTasks(work.tasks).review.length;
+    if (lastReview.current !== null && n > lastReview.current) cue('done');
+    lastReview.current = n;
+  }, [work.tasks]);
   const [streak, setStreak] = useState(0);
   const [celebrateUntil, setCelebrateUntil] = useState(0);
   const [, setTick] = useState(0);
@@ -103,7 +114,7 @@ export function App() {
     { id: 'go-chat', label: 'Go to Chat', run: () => setView('chat') },
     { id: 'go-books', label: 'Go to Books', run: () => setView('books') },
     { id: 'go-ideas', label: 'Go to Ideas', run: () => setView('ideas') },
-    { id: 'go-review', label: 'Go to Review', run: () => setView('review') },
+    { id: 'go-tasks', label: 'Go to Tasks', run: () => setView('tasks') },
     { id: 'go-settings', label: 'Go to Settings', run: () => setView('settings') },
   ];
 
@@ -115,7 +126,7 @@ export function App() {
   return (
     <div className="shell">
       <div className="ambient" aria-hidden="true"><i /><i /></div>
-      <Rail view={view} onChange={setView} companion={companion} />
+      <Rail view={view} onChange={setView} companion={companion} badge={waiting} />
       <div className="page">
         <header className="topbar">
           <span className="title">Fibb</span>
@@ -132,20 +143,20 @@ export function App() {
         <main className={`main${view === 'chat' && welcome ? ' is-welcome' : ''}`}>
           <Hero c={companion} state={mascotState} line2={line2} compact={view !== 'chat'} big={view === 'chat' && welcome} />
           <div className="view" hidden={view !== 'chat'}>
-            <ChatView apiRef={chat} facts={facts} onWelcome={setWelcome} active={view === 'chat'} onTurn={() => setTurn(t => t + 1)} companionName="Fibb"
+            <ChatView apiRef={chat} work={work} onOpenTasks={() => setView('tasks')} facts={facts} onWelcome={setWelcome} active={view === 'chat'} onTurn={() => setTurn(t => t + 1)} companionName="Fibb"
               readAloud={voice.readAloud} handsFree={voice.handsFree} voicePreset={companion?.voicePreset}
               onBusy={setBusy} onSpeaking={setSpeaking} onListening={setListening} onCelebrate={celebrate} onOpenTonight={() => setTonight(true)} />
           </div>
           {view === 'settings' && <SettingsView companion={companion} onCompanionChanged={loadCompanion} />}
           {view === 'books' && <EmptyState title="No books yet" text="Tell Fibb what you're writing and it will keep the bible, the chapters, and the goal here." action="Start in chat" onAction={() => setView('chat')} />}
-          {view === 'ideas' && <EmptyState title="Nothing captured yet" text="Say 'idea: …' in chat and it lands here." />}
-          {view === 'review' && <EmptyState title="Nothing to review" text="Overnight work will wait here for your yes." />}
+          {view === 'ideas' && <IdeasView tasks={work.tasks} reload={work.reload} onChat={() => setView('chat')} />}
+          {view === 'tasks' && <TasksView tasks={work.tasks} approvals={work.approvals} reload={work.reload} />}
         </main>
       </div>
       <CommandBar open={cmd} onClose={() => setCmd(false)} commands={commands} onSay={say} />
       {narrow
-        ? <TonightSheet open={tonight} onClose={() => setTonight(false)} refreshKey={turn} companion={companion} />
-        : <TonightDrawer open={tonight} onClose={() => setTonight(false)} refreshKey={turn} companion={companion} />}
+        ? <TonightSheet open={tonight} onClose={() => setTonight(false)} refreshKey={turn} companion={companion} tasks={work.tasks} onOpenTasks={() => { setTonight(false); setView('tasks'); }} />
+        : <TonightDrawer open={tonight} onClose={() => setTonight(false)} refreshKey={turn} companion={companion} tasks={work.tasks} onOpenTasks={() => { setTonight(false); setView('tasks'); }} />}
     </div>
   );
 }

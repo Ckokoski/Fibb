@@ -10,7 +10,8 @@ describe('parseQuickCapture', () => {
   });
   it('matches tonight captures', () => {
     expect(parseQuickCapture('tonight: draft three blurbs')).toEqual({ kind: 'tonight', text: 'draft three blurbs' });
-    expect(parseQuickCapture('Tonight, tighten chapter 4')).toEqual({ kind: 'tonight', text: 'tighten chapter 4' });
+    expect(parseQuickCapture('Tonight: tighten chapter 4')).toEqual({ kind: 'tonight', text: 'tighten chapter 4' });
+    expect(parseQuickCapture('Tonight, I wrote a lot')).toBeNull();
     expect(parseQuickCapture('tonight - research Victorian locks')).toEqual({ kind: 'tonight', text: 'research Victorian locks' });
   });
   it('keeps a multi-line body', () => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ConnectorsSection } from './ConnectorsSection';
 import { cue, setSounds, soundsOn } from '../lib/sound';
 import {
   deleteVaultKey, getModels, getVaultKeys, refreshProviders, saveVaultKey, setModel,
@@ -101,6 +102,8 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
         </div>
         {SLOTS.map(slot => <KeyRow key={slot.key} slot={slot} connected={keys.includes(slot.key)} onChanged={reload} />)}
       </section>
+
+      <ConnectorsSection />
 
       {models.length > 0 && (
         <section className="card">

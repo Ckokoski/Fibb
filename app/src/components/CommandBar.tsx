@@ -7,7 +7,7 @@ export function toMessage(raw: string): string {
   const t = raw.trim();
   const m = /^(idea|tonight)\s*[:,]\s*(.+)$/i.exec(t);
   if (!m) return t;
-  return m[1].toLowerCase() === 'idea' ? `idea: ${m[2]}` : `tonight, ${m[2]}`;
+  return m[1].toLowerCase() === 'idea' ? `idea: ${m[2]}` : `tonight: ${m[2]}`;
 }
 
 export function CommandBar({ open, onClose, commands, onSay }: { open: boolean; onClose: () => void; commands: Command[]; onSay: (text: string) => void }) {

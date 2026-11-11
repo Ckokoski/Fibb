@@ -66,7 +66,7 @@ export function parseQuickCapture(text: string): { kind: 'idea' | 'tonight'; tex
   if (typeof text !== 'string') return null;
   const idea = text.match(/^\s*idea\s*(?::|[-–—](?=\s))\s*(\S[\s\S]*)$/i);
   if (idea) return { kind: 'idea', text: idea[1].trim() };
-  const tonight = text.match(/^\s*tonight\s*(?:[,:]|[-–—](?=\s))\s*(\S[\s\S]*)$/i);
+  const tonight = text.match(/^\s*tonight\s*(?::|[-–—](?=\s))\s*(\S[\s\S]*)$/i);
   if (tonight) return { kind: 'tonight', text: tonight[1].trim() };
   return null;
 }

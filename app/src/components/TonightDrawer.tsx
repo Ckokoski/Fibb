@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
+import type { Task } from '../lib/tasks';
 import type { Companion } from '../lib/api';
 import { TonightBody } from './TonightPanel';
 
 /** Desktop right-side drawer; mobile uses TonightSheet. Focus moves in on open and back to the trigger on close. */
-export function TonightDrawer({ open, onClose, refreshKey, companion }: { open: boolean; onClose: () => void; refreshKey: number; companion: Companion | null }) {
+export function TonightDrawer({ open, onClose, refreshKey, companion, tasks, onOpenTasks }: { open: boolean; onClose: () => void; refreshKey: number; companion: Companion | null; tasks?: Task[]; onOpenTasks?: () => void }) {
   const head = useRef<HTMLHeadingElement>(null);
   const panel = useRef<HTMLElement>(null);
   const closeRef = useRef(onClose);
@@ -53,7 +54,7 @@ export function TonightDrawer({ open, onClose, refreshKey, companion }: { open: 
           <h3 ref={head} tabIndex={-1}>Tonight</h3>
           <button className="btn quiet" onClick={onClose} aria-label="Close">Close</button>
         </div>
-        <TonightBody refreshKey={refreshKey} companion={companion} />
+        <TonightBody refreshKey={refreshKey} companion={companion} tasks={tasks} onOpenTasks={onOpenTasks} />
       </aside>
     </>
   );
