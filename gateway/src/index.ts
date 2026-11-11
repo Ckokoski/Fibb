@@ -1052,8 +1052,14 @@ class FibbGateway {
         this.telegram.setCommandHandlers(commandHandlers);
         this.telegram.setTranscriber((b, m) => this.transcribe.transcribe(b, m).then(r => r.text));
         this.telegram.setCompanionVoice(() => this.companion.getVoicePreset());
-        await this.telegram.connect();
-        logger.info('  ✓ Telegram bridge connected (command center mode)');
+        // A network blip while reaching Telegram must never stop Fibb from starting.
+        try {
+          await this.telegram.connect();
+          logger.info('  ✓ Telegram bridge connected (command center mode)');
+        } catch (err) {
+          logger.warn('  ⚠ Telegram is unreachable right now; Fibb is starting without it. Restart to retry.');
+          this.telegram = undefined as any;
+        }
       } else {
         logger.warn('  ⚠ Telegram enabled but no token in vault');
       }

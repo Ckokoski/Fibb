@@ -27,11 +27,17 @@ Fibb takes an idea (or your existing manuscript) through **research → outline 
 **What works today**
 
 - Chat with memory
-- Six companions (Nib is the default), each with their own voice
+- One assistant, Fibb, with Nib as the face: he blinks, follows your cursor, talks with his voice, and dozes when idle
 - Voice notes on Telegram
 - Human-sounding voices: Kokoro (free, runs locally; one ~90 MB download) and Gemini TTS (free tier with your Gemini key), Edge as fallback
 - Mic, read-aloud, and hands-free mode in the app
 - Connections for your keys (free Gemini and local Ollama first)
+- Tasks and Ideas: say `tonight: ...` or `idea: ...` anywhere, or use the Tasks screen; repeat work on a schedule
+- Night shift: Fibb works through the queue at 2 in the morning and leaves results for you to keep or discard, with a morning brief on the welcome screen
+- Quick command bar (Ctrl+K)
+- Fibb's own browser (uses Edge or Chrome already on your PC): reads pages freely, asks before it clicks or types, never types passwords
+- Google Drive, Docs, Gmail and Calendar with your own Google OAuth client: reading is free, creating or changing a doc and drafting an email always ask first, and Fibb never sends email
+- Every action that changes something outside Fibb waits for an approval card
 
 ---
 

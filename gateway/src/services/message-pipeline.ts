@@ -50,28 +50,56 @@ function isToolChannel(channel: string): boolean {
  * author. Once proven ordinary text, chunks pass straight through.
  */
 function createStreamGate(onChunk: (chunk: string) => void) {
+  const TAG = '<tool>';
   let buf = '';
   let mode: 'hold' | 'pass' | 'tool' = 'hold';
+  // In pass mode, text is released up to (never including) a `<tool>` tag or a
+  // chunk-ending fragment that could still grow into one.
+  const release = (): void => {
+    const at = buf.indexOf(TAG);
+    if (at >= 0) {
+      if (at > 0) onChunk(buf.slice(0, at));
+      buf = ''; mode = 'tool';
+      return;
+    }
+    let keep = 0;
+    for (let n = Math.min(TAG.length - 1, buf.length); n > 0; n--) {
+      if (TAG.startsWith(buf.slice(buf.length - n))) { keep = n; break; }
+    }
+    const out = buf.slice(0, buf.length - keep);
+    if (out) onChunk(out);
+    buf = buf.slice(buf.length - keep);
+  };
   return {
     push(chunk: string): void {
-      if (mode === 'pass') { onChunk(chunk); return; }
-      buf += chunk;
       if (mode === 'tool') return;
+      buf += chunk;
+      if (mode === 'pass') { release(); return; }
       const t = buf.trimStart();
       if (!t) return;
-      if (t.startsWith('<tool>')) { mode = 'tool'; return; }
-      if (t.length < '<tool>'.length && '<tool>'.startsWith(t)) return;
+      if (t.startsWith(TAG)) { mode = 'tool'; buf = ''; return; }
+      if (t.length < TAG.length && TAG.startsWith(t)) return;
       mode = 'pass';
-      onChunk(buf);
-      buf = '';
+      release();
     },
     /** The finished reply was ordinary text: release anything still held. */
     flush(): void {
-      if (mode === 'hold' && buf) onChunk(buf);
+      if (mode !== 'tool' && buf) onChunk(buf);
       buf = '';
       mode = 'pass';
     },
   };
+}
+
+/**
+ * Splits a reply into the prose before a `<tool>` call and the call itself.
+ * Models often say a sentence and then call a tool; the sentence is kept for
+ * the author and the call is executed.
+ */
+export function splitToolCall(text: string): { before: string; call: string } {
+  const t = typeof text === 'string' ? text : '';
+  const at = t.indexOf('<tool>');
+  return at < 0 ? { before: t, call: '' } : { before: t.slice(0, at).trimEnd(), call: t.slice(at) };
 }
 
 /**
@@ -584,6 +612,9 @@ export class MessagePipeline {
     let estimatedCost = 0;
     let forceFinal = false;
     let pendingApproval: string | null = null;
+    // Prose the model wrote before its tool calls; it has already been streamed and stays in the reply.
+    let said = '';
+    const withSaid = (text: string) => (said ? `${said}\n\n${text}` : text);
 
     for (;;) {
       const turnReq = { ...req, system: forceFinal ? baseSystem : req.system, messages };
@@ -594,9 +625,14 @@ export class MessagePipeline {
       tokensUsed += Number(r.tokensUsed) || 0;
       estimatedCost += Number(r.estimatedCost) || 0;
 
-      if (!looksLikeToolCall(r.text)) {
+      const parts = splitToolCall(r.text);
+      if (!parts.call) {
         gate?.flush();
-        return { ...r, tokensUsed, estimatedCost };
+        return { ...r, text: withSaid(r.text), tokensUsed, estimatedCost };
+      }
+      if (parts.before) {
+        said = withSaid(parts.before);
+        if (onChunk) onChunk('\n\n');
       }
 
       if (forceFinal) {
@@ -605,17 +641,18 @@ export class MessagePipeline {
           ? `I need your OK before I can do this: ${pendingApproval}. It is waiting for you in Approvals.`
           : 'I ran out of steps before I could finish that. Ask me again and I will pick it up from here.';
         if (onChunk) onChunk(text);
-        return { ...r, text, tokensUsed, estimatedCost };
+        return { ...r, text: withSaid(text), tokensUsed, estimatedCost };
       }
 
       state.calls++;
-      const call = parseToolCall(r.text);
+      const call = parseToolCall(parts.call);
       let feedback: string;
       if (!call) {
         messages.push({ role: 'assistant', content: r.text.trim().slice(0, 2000) });
+        void looksLikeToolCall;
         feedback = 'That tool call could not be read. Reply with ONLY <tool>{"name":"...","args":{...}}</tool> using valid JSON, or answer the author without a tool.';
       } else {
-        messages.push({ role: 'assistant', content: `<tool>${JSON.stringify({ name: call.name, args: call.args })}</tool>` });
+        messages.push({ role: 'assistant', content: `${parts.before ? `${parts.before}\n` : ''}<tool>${JSON.stringify({ name: call.name, args: call.args })}</tool>` });
         const summary = toolSummary(runner.registry.get(call.name), call.name);
         emit({ name: call.name, status: 'start', summary });
         let outcome: Awaited<ReturnType<typeof runner.execute>>;

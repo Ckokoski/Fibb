@@ -62,7 +62,7 @@ export function ChatView({ apiRef, work, onOpenTasks, facts, onWelcome, onTurn, 
   useEffect(() => { try { localStorage.setItem(STORE, JSON.stringify(msgs.slice(-200))); } catch { /* ignore */ } }, [msgs]);
   const lastLen = msgs[msgs.length - 1]?.content.length ?? 0;
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs.length, lastLen, busy]);
-  useEffect(() => { if (active) endRef.current?.scrollIntoView(); }, [active]);
+  useEffect(() => { if (active && !welcome) endRef.current?.scrollIntoView(); }, [active, welcome]);
   useEffect(() => { onListening(listening); }, [listening, onListening]);
   useEffect(() => { onBusy(busy); }, [busy, onBusy]);
   useEffect(() => { onSpeaking(speaking); }, [speaking, onSpeaking]);

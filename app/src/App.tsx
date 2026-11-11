@@ -153,7 +153,7 @@ export function App() {
           {view === 'tasks' && <TasksView tasks={work.tasks} approvals={work.approvals} reload={work.reload} />}
         </main>
       </div>
-      <CommandBar open={cmd} onClose={() => setCmd(false)} commands={commands} onSay={say} />
+      {cmd && <CommandBar open onClose={() => setCmd(false)} commands={commands} onSay={say} />}
       {narrow
         ? <TonightSheet open={tonight} onClose={() => setTonight(false)} refreshKey={turn} companion={companion} tasks={work.tasks} onOpenTasks={() => { setTonight(false); setView('tasks'); }} />
         : <TonightDrawer open={tonight} onClose={() => setTonight(false)} refreshKey={turn} companion={companion} tasks={work.tasks} onOpenTasks={() => { setTonight(false); setView('tasks'); }} />}
