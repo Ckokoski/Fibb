@@ -100,7 +100,7 @@ export function Playbook({ onSay, reload }: { onSay: (text: string) => void; rel
       </div>
       <div className="plays">
         {plays.filter(p => p.category === cat).map(p => (
-          <div key={p.id} className={`play${p.available ? '' : ' off'}`}>
+          <div key={p.id} className={`playcard${p.available ? '' : ' off'}`}>
             <b>{p.title}</b>
             <span className="s">{note[p.id] || p.blurb}</span>
             {p.available
