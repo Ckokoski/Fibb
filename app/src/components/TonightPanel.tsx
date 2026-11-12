@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
+import { groupTasks, runQueued, type Task } from '../lib/tasks';
+import { Ring } from './Work';
 import { getFacts, getWritingStats, type Companion, type Facts, type WritingStats } from '../lib/api';
 
-export function TonightBody({ refreshKey, companion }: { refreshKey: number; companion: Companion | null }) {
+export function TonightBody({ refreshKey, companion, tasks = [], onOpenTasks }: { refreshKey: number; companion: Companion | null; tasks?: Task[]; onOpenTasks?: () => void }) {
+  const g = groupTasks(tasks);
   const who = companion?.name ?? 'Fibb';
   const [facts, setFacts] = useState<Facts | null>(null);
   const [stats, setStats] = useState<WritingStats>({});
@@ -14,7 +17,9 @@ export function TonightBody({ refreshKey, companion }: { refreshKey: number; com
   return (
     <>
       <div>
-        <div className="streak"><span className="n">{streak}</span><span className="l">day streak · {words.toLocaleString()} words</span></div>
+        {streak > 0
+          ? <div className="streak"><span className="n">{streak}</span><span className="l">day streak · {words.toLocaleString()} words</span></div>
+          : <div className="streak"><span className="l">{words > 0 ? `${words.toLocaleString()} words so far. Write today to start a streak.` : 'Write today to start a streak.'}</span></div>}
         {book?.goal && (<>
           <div className="bar"><i style={{ width: book.chapter ? `${Math.min(100, book.chapter * 4)}%` : '8%' }} /></div>
           <div className="kv"><span>{book.title}</span><span>{book.goal}</span></div>
@@ -23,8 +28,12 @@ export function TonightBody({ refreshKey, companion }: { refreshKey: number; com
       <div>
         <h4>Tonight</h4>
         <div className="tasks">
-          <div className="task"><div><div className="tt">Nothing queued yet</div><div className="ts">Tell {who} “tonight, draft the next chapter” to queue work. Overnight runs arrive in the next update.</div></div></div>
+          {g.review.length > 0 && <button className="task" onClick={onOpenTasks}><Ring value={100} /><div><div className="tt">{g.review.length} ready for your review</div><div className="ts">Open Tasks to read and keep or discard</div></div></button>}
+          {g.running.map(t => <div key={t.id} className="task live"><Ring value={t.progress} spin /><div><div className="tt">{t.title}</div><div className="ts">Working on it · {Math.round(t.progress)}%</div></div></div>)}
+          {g.queued.map(t => <div key={t.id} className="task"><Ring value={0} /><div><div className="tt">{t.title}</div><div className="ts">Queued</div></div></div>)}
+          {g.queued.length + g.running.length + g.review.length === 0 && <div className="task"><div><div className="tt">Nothing queued yet</div><div className="ts">Say "tonight: draft the next chapter" and {who} will have it ready by morning.</div></div></div>}
         </div>
+        {g.queued.length > 0 && <div className="act" style={{ marginTop: 10, display: 'flex', gap: 8 }}><button className="btn" onClick={() => { void runQueued(); }}>Start now</button><button className="btn quiet" onClick={onOpenTasks}>Open Tasks</button></div>}
       </div>
       <div>
         <h4>What {who} knows</h4>

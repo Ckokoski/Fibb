@@ -116,3 +116,18 @@ export function sanitizeSegment(name: string, fallback = 'file'): string {
 
   return cleaned;
 }
+
+/**
+ * A Content-Disposition header value for a file name that came from a URL.
+ * The name is reduced to plain ASCII without quotes, backslashes, control
+ * characters or separators, so it cannot break out of the quoted string or
+ * add header parameters.
+ */
+export function contentDisposition(kind: 'inline' | 'attachment', filename: string): string {
+  const safe = String(filename ?? '')
+    .replace(/[^\x20-\x7e]/g, '_')
+    .replace(/["\\/;%]/g, '_')
+    .trim()
+    .slice(0, 150) || 'file';
+  return `${kind}; filename="${safe}"`;
+}

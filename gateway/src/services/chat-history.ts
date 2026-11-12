@@ -3,7 +3,7 @@
  * The MessagePipeline keeps its in-memory Map as the hot path; this store
  * makes it survive restarts (spec §3 "Persistent history").
  */
-import { mkdir, readFile, writeFile, rename, copyFile, unlink } from 'fs/promises';
+import { mkdir, readFile, writeFile, rename, copyFile, unlink, readdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { logger } from './logger.js';
@@ -39,6 +39,15 @@ export class ChatHistoryStore {
   private fileFor(channel: string): string {
     const safe = channel.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
     return join(this.dir, `${safe}.json`);
+  }
+
+  /** Channels that have saved history, by their file-safe name (e.g. "webchat", "telegram_123"). */
+  async listChannels(): Promise<string[]> {
+    try {
+      return (await readdir(this.dir)).filter(f => /^[a-zA-Z0-9_-]+\.json$/.test(f)).map(f => f.slice(0, -5));
+    } catch {
+      return [];
+    }
   }
 
   async load(channel: string): Promise<HistoryMessage[]> {

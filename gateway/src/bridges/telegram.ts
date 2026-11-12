@@ -58,6 +58,24 @@ export class TelegramBridge {
     };
   }
 
+  // Fibb's own HTTP API (same process). Every call must carry the install's
+  // session token; see security/session-token.ts.
+  private localBase = 'http://localhost:3847';
+  private localToken = '';
+
+  /** Where Fibb's own API listens, and the session token internal calls must send. */
+  setLocalApi(port: number, token: string): void {
+    const p = Number.isInteger(port) && port > 0 && port < 65536 ? port : 3847;
+    this.localBase = `http://localhost:${p}`;
+    this.localToken = token;
+  }
+
+  private localApi(path: string, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers);
+    if (this.localToken) headers.set('X-Fibb-Token', this.localToken);
+    return fetch(`${this.localBase}${path}`, { ...init, headers });
+  }
+
   onMessage(handler: (
     content: string, channel: string, respond: (text: string) => void,
     extraContext?: string, overrideTaskType?: string, preferredProvider?: string,
@@ -319,7 +337,7 @@ export class TelegramBridge {
       }
 
       if (!summary) summary = 'Nothing running. Use /project or /novel to start.\n';
-      await this.sendMessage(chatId, summary + `\n📊 Dashboard: http://localhost:3847`);
+      await this.sendMessage(chatId, summary + `\n📊 Dashboard: ${this.localBase}`);
       return;
     }
 
@@ -451,7 +469,7 @@ export class TelegramBridge {
 
         await this.sendMessage(chatId, `📦 Exporting "${filename}" as ${format === 'all' ? 'all formats' : format.toUpperCase()}...`);
 
-        const exportRes = await fetch('http://localhost:3847/api/author-os/format', {
+        const exportRes = await this.localApi('/api/author-os/format', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -484,7 +502,7 @@ export class TelegramBridge {
       if (!target) {
         // Show workspace stats
         try {
-          const statsRes = await fetch('http://localhost:3847/api/workspace/stats');
+          const statsRes = await this.localApi('/api/workspace/stats');
           const stats = await statsRes.json() as any;
           let msg = `📊 *Workspace Usage:* ${stats.totalSizeFormatted} (${stats.totalFiles} files)\n\n`;
           for (const [name, info] of Object.entries(stats.breakdown) as any) {
@@ -506,7 +524,7 @@ export class TelegramBridge {
       }
 
       try {
-        const cleanRes = await fetch(`http://localhost:3847/api/workspace/clean?target=${target}`, { method: 'DELETE' });
+        const cleanRes = await this.localApi(`/api/workspace/clean?target=${target}`, { method: 'DELETE' });
         const result = await cleanRes.json() as any;
         if (result.success) {
           await this.sendMessage(chatId, `🧹 Cleaned ${target}: ${result.deleted} items removed.`);
@@ -594,7 +612,7 @@ export class TelegramBridge {
         await this.sendMessage(chatId, `🎙️ Generating audio${voice ? ` (${voice})` : ''}...`);
 
         // Call the TTS API
-        const ttsRes = await fetch('http://localhost:3847/api/audio/generate', {
+        const ttsRes = await this.localApi('/api/audio/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: speakText, voice }),
@@ -613,7 +631,7 @@ export class TelegramBridge {
 
         if (!sent) {
           // Fallback: send as regular message with audio link
-          await this.sendMessage(chatId, `⚠️ Voice upload failed. Listen here:\nhttp://localhost:3847/api/audio/file/${ttsData.filename}`);
+          await this.sendMessage(chatId, `⚠️ Voice upload failed. Listen here:\n${this.localBase}/api/audio/file/${ttsData.filename}`);
         }
       } catch (e) {
         await this.sendMessage(chatId, `❌ Voice error: ${String(e)}`);
@@ -630,7 +648,7 @@ export class TelegramBridge {
       if (activeProject) {
         this.pauseRequested = true;
         try {
-          await fetch(`http://localhost:3847/api/projects/${activeProject.id}/pause`, { method: 'POST' });
+          await this.localApi(`/api/projects/${activeProject.id}/pause`, { method: 'POST' });
         } catch { /* silent */ }
         await this.sendMessage(chatId, `⏸ Paused "${activeProject.title}". Say "continue" to resume.`);
       } else {
@@ -873,7 +891,7 @@ ${text}`;
       if (cleanText.trim().length < 5) return; // Skip tiny responses
 
       const voice = typeof voiceSetting === 'string' ? voiceSetting : undefined;
-      const ttsRes = await fetch('http://localhost:3847/api/audio/generate', {
+      const ttsRes = await this.localApi('/api/audio/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: cleanText, voice }),

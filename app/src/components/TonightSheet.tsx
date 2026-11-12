@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
+import type { Task } from '../lib/tasks';
 import type { Companion } from '../lib/api';
 import { TonightBody } from './TonightPanel';
 
 /** Mobile bottom sheet reusing the Tonight panel content. */
-export function TonightSheet({ open, onClose, refreshKey, companion }: {
-  open: boolean; onClose: () => void; refreshKey: number; companion: Companion | null;
+export function TonightSheet({ open, onClose, refreshKey, companion, tasks, onOpenTasks }: {
+  open: boolean; onClose: () => void; refreshKey: number; companion: Companion | null; tasks?: Task[]; onOpenTasks?: () => void;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -17,7 +18,7 @@ export function TonightSheet({ open, onClose, refreshKey, companion }: {
       <div className="sheet-scrim" onClick={onClose} />
       <div className="sheet" role="dialog" aria-modal="true" aria-label="Tonight">
         <button className="sheet-close" onClick={onClose} aria-label="Close">Close</button>
-        <TonightBody refreshKey={refreshKey} companion={companion} />
+        <TonightBody refreshKey={refreshKey} companion={companion} tasks={tasks} onOpenTasks={onOpenTasks} />
       </div>
     </>
   );

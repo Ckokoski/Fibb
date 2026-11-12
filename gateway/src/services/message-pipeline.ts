@@ -25,6 +25,82 @@ import type { ServiceContainer } from './container.js';
 import { logger } from './logger.js';
 import { getRecommendedThinking, getOutputBudget } from '../ai/router.js';
 import type { DetectResult } from '../security/injection.js';
+import {
+  parseToolCall, looksLikeToolCall, renderToolPrompt, toolSummary, type Tool, type ToolTurnState,
+} from './tools/registry.js';
+
+/** Progress event emitted while the model uses a tool. */
+export interface ToolEvent {
+  name: string;
+  status: 'start' | 'done' | 'needs-approval';
+  summary: string;
+}
+
+/** Most tool calls the model may make in one turn before it must answer. */
+export const MAX_TOOL_CALLS_PER_TURN = 6;
+
+/** Tools are offered only where a person (or a night-shift work order) is on the other end. */
+function isToolChannel(channel: string): boolean {
+  return channel === 'webchat' || channel === 'night-shift' || channel.startsWith('telegram');
+}
+
+/**
+ * Holds back the start of a streamed reply until its first non-whitespace
+ * characters prove it is not a `<tool>` call, so tool calls never reach the
+ * author. Once proven ordinary text, chunks pass straight through.
+ */
+function createStreamGate(onChunk: (chunk: string) => void) {
+  const TAG = '<tool>';
+  let buf = '';
+  let mode: 'hold' | 'pass' | 'tool' = 'hold';
+  // In pass mode, text is released up to (never including) a `<tool>` tag or a
+  // chunk-ending fragment that could still grow into one.
+  const release = (): void => {
+    const at = buf.indexOf(TAG);
+    if (at >= 0) {
+      if (at > 0) onChunk(buf.slice(0, at));
+      buf = ''; mode = 'tool';
+      return;
+    }
+    let keep = 0;
+    for (let n = Math.min(TAG.length - 1, buf.length); n > 0; n--) {
+      if (TAG.startsWith(buf.slice(buf.length - n))) { keep = n; break; }
+    }
+    const out = buf.slice(0, buf.length - keep);
+    if (out) onChunk(out);
+    buf = buf.slice(buf.length - keep);
+  };
+  return {
+    push(chunk: string): void {
+      if (mode === 'tool') return;
+      buf += chunk;
+      if (mode === 'pass') { release(); return; }
+      const t = buf.trimStart();
+      if (!t) return;
+      if (t.startsWith(TAG)) { mode = 'tool'; buf = ''; return; }
+      if (t.length < TAG.length && TAG.startsWith(t)) return;
+      mode = 'pass';
+      release();
+    },
+    /** The finished reply was ordinary text: release anything still held. */
+    flush(): void {
+      if (mode !== 'tool' && buf) onChunk(buf);
+      buf = '';
+      mode = 'pass';
+    },
+  };
+}
+
+/**
+ * Splits a reply into the prose before a `<tool>` call and the call itself.
+ * Models often say a sentence and then call a tool; the sentence is kept for
+ * the author and the call is executed.
+ */
+export function splitToolCall(text: string): { before: string; call: string } {
+  const t = typeof text === 'string' ? text : '';
+  const at = t.indexOf('<tool>');
+  return at < 0 ? { before: t, call: '' } : { before: t.slice(0, at).trimEnd(), call: t.slice(at) };
+}
 
 /**
  * Feature flag (Chunk B2): inject the tiered CORE + ARCHIVAL blocks into the
@@ -47,6 +123,29 @@ const CHAT_CORE_INJECTION_ENABLED = !['off', 'false', '0'].includes(
  * is a safety valve, not a routine trimmer.
  */
 const SYSTEM_PROMPT_SOFT_CAP = 24000;
+
+/**
+ * Channels that are not a person chatting (project engines, silent/system
+ * callers, overnight work orders). The no-AI chat shortcuts ("forget that",
+ * quick capture) are skipped on these.
+ */
+const NO_SHORTCUT_CHANNELS = ['projects', 'project-engine', 'goal-engine', 'conductor', 'api-silent', 'night-shift'];
+
+/**
+ * Quick capture: "idea: ..." saves an idea, "tonight: ..." queues overnight
+ * work. The keyword must be followed by a colon (or a comma for "tonight"), or
+ * by a dash that has whitespace after it, so ordinary sentences ("Tonight I
+ * wrote a lot", "idea of the book is...", "idea-driven plots") do not match.
+ * The body may span multiple lines.
+ */
+export function parseQuickCapture(text: string): { kind: 'idea' | 'tonight'; text: string } | null {
+  if (typeof text !== 'string') return null;
+  const idea = text.match(/^\s*idea\s*(?::|[-–—](?=\s))\s*(\S[\s\S]*)$/i);
+  if (idea) return { kind: 'idea', text: idea[1].trim() };
+  const tonight = text.match(/^\s*tonight\s*(?::|[-–—](?=\s))\s*(\S[\s\S]*)$/i);
+  if (tonight) return { kind: 'tonight', text: tonight[1].trim() };
+  return null;
+}
 
 /**
  * The pipeline owns the per-channel conversation history (moved off the
@@ -109,6 +208,7 @@ export class MessagePipeline {
     overrideTaskType?: string,
     preferredProvider?: string,
     onChunk?: (chunk: string) => void,
+    onTool?: (e: ToolEvent) => void,
   ): Promise<void> {
     // Optional caution appended to the system prompt when an injection pattern
     // was downgraded from block → warn (set inside the injection check below).
@@ -162,7 +262,7 @@ export class MessagePipeline {
     }
 
     // ── "Forget that" — user-directed facts removal (no AI call) ──
-    if (!['projects', 'project-engine', 'goal-engine', 'conductor', 'api-silent'].includes(channel)) {
+    if (!NO_SHORTCUT_CHANNELS.includes(channel)) {
       const explicit = /^\s*fibb[,:]?\s*forget\b/i.test(content);
       let phrase: string | null = null;
       if (explicit) {
@@ -188,6 +288,36 @@ export class MessagePipeline {
         this.persistHistory(channel);
         respond(reply);
         return;
+      }
+    }
+
+    // ── Quick capture: "idea: ..." / "tonight: ..." (no AI call) ──
+    if (this.deps.tasks && !NO_SHORTCUT_CHANNELS.includes(channel)) {
+      const capture = parseQuickCapture(content);
+      if (capture) {
+        const title = capture.text.replace(/\s+/g, ' ').trim().slice(0, 80);
+        let reply: string | null = null;
+        try {
+          if (capture.kind === 'idea') {
+            await this.deps.tasks.add({ title, detail: capture.text, kind: 'idea', source: 'chat' });
+            reply = `Saved to Ideas: "${title}".`;
+          } else {
+            await this.deps.tasks.add({ title, detail: capture.text, kind: 'task', when: 'tonight', source: 'chat' });
+            reply = `Queued for tonight: "${title}". I'll have it ready for your review in the morning.`;
+          }
+        } catch (err) {
+          // Could not save: fall through to the AI path rather than lose the message.
+          logger.debug('quick capture failed', err);
+        }
+        if (reply !== null) {
+          const hist = await this.getHistory(channel);
+          hist.push({ role: 'user', content, timestamp: new Date() });
+          hist.push({ role: 'assistant', content: reply, timestamp: new Date() });
+          this.persistHistory(channel);
+          if (onChunk) onChunk(reply);
+          respond(reply);
+          return;
+        }
       }
     }
 
@@ -237,6 +367,18 @@ export class MessagePipeline {
     // `content` (the user's message) is threaded in so buildSystemPrompt can
     // (a) drive the CORE promotion match against the active project and
     // (b) key the ARCHIVAL FTS search. Both are additive + guarded.
+    // Tools (Fibb P4c): offered only on interactive channels and only when at
+    // least one is available. With none, everything below is unchanged.
+    let turnTools: Tool[] = [];
+    if (this.deps.toolRunner && isToolChannel(channel)) {
+      try {
+        turnTools = await this.deps.toolRunner.registry.available();
+      } catch (err) {
+        logger.debug('tool availability check failed', err);
+        turnTools = [];
+      }
+    }
+
     let systemPrompt = await this.buildSystemPrompt({
       soul,
       memories,
@@ -245,6 +387,7 @@ export class MessagePipeline {
       heartbeatContext,
       channel,
       userMessage: content,
+      toolsAvailable: turnTools.length > 0,
     });
 
     if (extraContext) {
@@ -256,10 +399,23 @@ export class MessagePipeline {
       systemPrompt += injectionCaution;
     }
 
+    // The tool section goes last. baseSystemPrompt (without it) is used when
+    // the model must give a final answer with no further tool calls.
+    const baseSystemPrompt = systemPrompt;
+    if (turnTools.length > 0) {
+      systemPrompt += '\n' + renderToolPrompt(turnTools);
+    }
+    // One per turn; also records whether untrusted or flagged tool results were read.
+    const toolState: ToolTurnState = { calls: 0 };
+
     // ── Add to conversation history (skip for project engines + silent channels) ──
     // Project steps use their own context chain, not the chat history
     const isProjectChannel = channel === 'projects' || channel === 'project-engine' || channel === 'goal-engine';
-    const skipHistory = isProjectChannel || channel === 'conductor' || channel === 'api-silent';
+    // Night-shift work orders run unattended: like project steps they get a
+    // clean single-message array and never touch chat history, but (unlike
+    // project steps) they still stream so task progress can be tracked.
+    const isNightShift = channel === 'night-shift';
+    const skipHistory = isProjectChannel || isNightShift || channel === 'conductor' || channel === 'api-silent';
     // Per-channel conversation history prevents cross-contamination between
     // Telegram users, web chat, and API callers.
     const history = await this.getHistory(channel);
@@ -280,7 +436,7 @@ export class MessagePipeline {
     // ── Build messages array ──
     // Project steps get a CLEAN message array (just the step prompt)
     // Chat messages include conversation history for continuity
-    const messages = isProjectChannel
+    const messages = (isProjectChannel || isNightShift)
       ? [{ role: 'user' as const, content }]
       : history.map(m => ({
           role: m.role as 'user' | 'assistant',
@@ -303,9 +459,11 @@ export class MessagePipeline {
         maxTokens: taskMaxTokens,
         ...(thinking ? { thinking } : {}),
       };
-      const response = (onChunk && !isProjectChannel)
-        ? await this.deps.aiRouter.completeStream(req, onChunk)
-        : await this.deps.aiRouter.complete(req);
+      const response = turnTools.length > 0
+        ? await this.completeWithTools(req, baseSystemPrompt, (onChunk && !isProjectChannel) ? onChunk : undefined, onTool, channel, toolState)
+        : (onChunk && !isProjectChannel)
+          ? await this.deps.aiRouter.completeStream(req, onChunk)
+          : await this.deps.aiRouter.complete(req);
 
       if (!skipHistory) {
         history.push({
@@ -386,13 +544,19 @@ export class MessagePipeline {
       if (fallback) {
         try {
           logger.warn(`  ↻ Falling back to ${fallback.id}...`);
-          const response = await this.deps.aiRouter.complete({
+          // The fallback may use tools only if the failed attempt had not
+          // already made a tool call (so nothing is requested twice).
+          const fallbackTools = turnTools.length > 0 && toolState.calls === 0;
+          const fallbackReq = {
             provider: fallback.id,
-            system: systemPrompt,
+            system: fallbackTools ? systemPrompt : baseSystemPrompt,
             messages,
             maxTokens: taskMaxTokens,
             ...(thinking ? { thinking } : {}),
-          });
+          };
+          const response = fallbackTools
+            ? await this.completeWithTools(fallbackReq, baseSystemPrompt, undefined, onTool, channel, toolState)
+            : await this.deps.aiRouter.complete(fallbackReq);
           if (!skipHistory) {
             history.push({
               role: 'assistant',
@@ -421,6 +585,102 @@ export class MessagePipeline {
           `No fallback provider available. Add an API key or start Ollama in Settings.`
         );
       }
+    }
+  }
+
+  /**
+   * One AI turn with tool use. The model either answers (returned as-is) or
+   * replies with a `<tool>` call, which is executed and fed back; this repeats
+   * up to MAX_TOOL_CALLS_PER_TURN times, then a final answer is forced. The
+   * tool-call and tool-result messages exist only in this turn's message
+   * array; they are never written to chat history. Tool-call text never
+   * reaches onChunk. Tokens and cost are summed across the calls.
+   */
+  private async completeWithTools(
+    req: { provider: string; system: string; messages: Array<{ role: 'user' | 'assistant'; content: string }>; maxTokens: number; thinking?: any },
+    baseSystem: string,
+    onChunk: ((chunk: string) => void) | undefined,
+    onTool: ((e: ToolEvent) => void) | undefined,
+    channel: string,
+    state: ToolTurnState,
+  ) {
+    const runner = this.deps.toolRunner;
+    const messages = [...req.messages];
+    const emit = (e: ToolEvent) => {
+      try { onTool?.(e); } catch (err) { logger.debug('onTool handler failed', err); }
+    };
+    let tokensUsed = 0;
+    let estimatedCost = 0;
+    let forceFinal = false;
+    let pendingApproval: string | null = null;
+    // Prose the model wrote before its tool calls; it has already been streamed and stays in the reply.
+    let said = '';
+    const withSaid = (text: string) => (said ? `${said}\n\n${text}` : text);
+
+    for (;;) {
+      const turnReq = { ...req, system: forceFinal ? baseSystem : req.system, messages };
+      const gate = onChunk ? createStreamGate(onChunk) : null;
+      const r = gate
+        ? await this.deps.aiRouter.completeStream(turnReq, (c: string) => gate.push(c))
+        : await this.deps.aiRouter.complete(turnReq);
+      tokensUsed += Number(r.tokensUsed) || 0;
+      estimatedCost += Number(r.estimatedCost) || 0;
+
+      const parts = splitToolCall(r.text);
+      if (!parts.call) {
+        gate?.flush();
+        return { ...r, text: withSaid(r.text), tokensUsed, estimatedCost };
+      }
+      if (parts.before) {
+        said = withSaid(parts.before);
+        if (onChunk) onChunk('\n\n');
+      }
+
+      if (forceFinal) {
+        // Told to answer, it tried another tool: answer for it, honestly.
+        const text = pendingApproval
+          ? `I need your OK before I can do this: ${pendingApproval}. It is waiting for you in Approvals.`
+          : 'I ran out of steps before I could finish that. Ask me again and I will pick it up from here.';
+        if (onChunk) onChunk(text);
+        return { ...r, text: withSaid(text), tokensUsed, estimatedCost };
+      }
+
+      state.calls++;
+      const call = parseToolCall(parts.call);
+      let feedback: string;
+      if (!call) {
+        messages.push({ role: 'assistant', content: r.text.trim().slice(0, 2000) });
+        void looksLikeToolCall;
+        feedback = 'That tool call could not be read. Reply with ONLY <tool>{"name":"...","args":{...}}</tool> using valid JSON, or answer the author without a tool.';
+      } else {
+        messages.push({ role: 'assistant', content: `${parts.before ? `${parts.before}\n` : ''}<tool>${JSON.stringify({ name: call.name, args: call.args })}</tool>` });
+        const summary = toolSummary(runner.registry.get(call.name), call.name);
+        emit({ name: call.name, status: 'start', summary });
+        let outcome: Awaited<ReturnType<typeof runner.execute>>;
+        try {
+          outcome = await runner.execute(call, { channel, turn: state });
+        } catch (err) {
+          logger.debug('tool execution failed', err);
+          outcome = { kind: 'error', text: `The tool "${call.name}" failed.` };
+        }
+        if (outcome.kind === 'needs-approval') {
+          pendingApproval = outcome.description;
+          forceFinal = true;
+          emit({ name: call.name, status: 'needs-approval', summary: 'Waiting for your OK' });
+          feedback =
+            `The author must approve this first. It has NOT been done. A request is waiting in their Approvals: "${outcome.description}". ` +
+            'Tell the author in one or two sentences what you asked to do and why, then stop. Do not call another tool and do not say it is done.';
+        } else {
+          emit({ name: call.name, status: 'done', summary });
+          feedback = outcome.kind === 'error' ? `Tool error: ${outcome.text}` : outcome.text;
+        }
+      }
+
+      if (!forceFinal && state.calls >= MAX_TOOL_CALLS_PER_TURN) {
+        forceFinal = true;
+        feedback += '\n\nYou have used all your tool calls for this turn. Answer the author now with what you have. Do not call another tool.';
+      }
+      messages.push({ role: 'user', content: feedback });
     }
   }
 
@@ -537,6 +797,8 @@ export class MessagePipeline {
     channel?: string;
     /** The user's raw message — keys CORE promotion + ARCHIVAL search. */
     userMessage?: string;
+    /** True when a tool section will be appended for this turn. */
+    toolsAvailable?: boolean;
   }): Promise<string> {
     let prompt = '';
 
@@ -695,6 +957,9 @@ export class MessagePipeline {
       .sort()
       .join(', ');
     if (domains) prompt += `- You may fetch only these approved domains: ${domains}\n`;
+    if (context.toolsAvailable) {
+      prompt += '- You have tools (see Tools below). Use one when it gets the author a real answer; actions that change anything wait for their OK.\n';
+    }
     prompt += '\n';
 
     // ── Total budget guard (Chunk B2) ──

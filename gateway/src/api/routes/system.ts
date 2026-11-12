@@ -321,6 +321,11 @@ export function registerSystemRoutes(ctx: ApiContext): void {
 
   // Load API keys from text files in the VM shared folder
   app.post('/api/vault/load-from-files', async (req: Request, res: Response) => {
+    // Validate before touching anything: the name becomes a vault slot.
+    const requestedFallback = req.body?.fallbackKeyName;
+    if (requestedFallback !== undefined && (typeof requestedFallback !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(requestedFallback))) {
+      return res.status(400).json({ error: 'fallbackKeyName may only contain letters, numbers, dashes and underscores.' });
+    }
     const { readFile: rf } = await import('fs/promises');
     const { existsSync: ex } = await import('fs');
     const { join: j } = await import('path');
@@ -358,14 +363,15 @@ export function registerSystemRoutes(ctx: ApiContext): void {
             await services.audit.log('vault', 'key_loaded_from_file', { key: vaultKey, file: filename });
             loaded.push(vaultKey);
           }
-        } catch (e) {
-          errors.push(`${filename}: ${String(e)}`);
+        } catch {
+          // File base name only: never a path or the raw error text.
+          errors.push(filename);
         }
       }
     }
 
     // Generic key.txt fallback
-    const fallbackKey = req.body?.fallbackKeyName || 'gemini_api_key';
+    const fallbackKey = requestedFallback || 'gemini_api_key';
     const genericPath = j(sharedFolder, 'key.txt');
     if (ex(genericPath) && !loaded.includes(fallbackKey)) {
       try {
@@ -375,8 +381,8 @@ export function registerSystemRoutes(ctx: ApiContext): void {
           await services.audit.log('vault', 'key_loaded_from_file', { key: fallbackKey, file: 'key.txt' });
           loaded.push(fallbackKey + ' (from key.txt)');
         }
-      } catch (e) {
-        errors.push(`key.txt: ${String(e)}`);
+      } catch {
+        errors.push('key.txt');
       }
     }
 
@@ -505,12 +511,16 @@ export function registerSystemRoutes(ctx: ApiContext): void {
 
       const result = await gateway.connectTelegram?.();
       if (result?.error) {
-        return res.status(400).json({ error: result.error });
+        // Fixed messages only: the gateway's error may carry raw exception text.
+        const noToken = String(result.error).startsWith('No telegram_bot_token');
+        return res.status(400).json({
+          error: noToken ? 'No Telegram bot token saved yet. Add your bot token first.' : 'Could not connect Telegram. Check the bot token and try again.',
+        });
       }
       await services.config.setAndPersist('bridges.telegram.enabled', true);
       res.json({ success: true, message: 'Telegram bridge connected' });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to connect Telegram: ' + String(error) });
+    } catch {
+      res.status(500).json({ error: 'Could not connect Telegram. Check the bot token and try again.' });
     }
   });
 
@@ -521,8 +531,13 @@ export function registerSystemRoutes(ctx: ApiContext): void {
   });
 
   app.post('/api/telegram/test', async (req: Request, res: Response) => {
-    const token = req.body.token || await services.vault.get('telegram_bot_token');
-    if (!token) {
+    let token: unknown;
+    try {
+      token = req.body?.token || await services.vault.get('telegram_bot_token');
+    } catch {
+      return res.status(500).json({ error: 'Could not read the saved Telegram token.' });
+    }
+    if (typeof token !== 'string' || !token) {
       return res.status(400).json({ error: 'No token provided or stored' });
     }
     try {
@@ -531,10 +546,10 @@ export function registerSystemRoutes(ctx: ApiContext): void {
       if (data.ok) {
         res.json({ success: true, bot: { username: data.result.username, name: data.result.first_name } });
       } else {
-        res.status(400).json({ error: data.description || 'Invalid token' });
+        res.status(400).json({ error: 'Telegram did not accept that token.' });
       }
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to test token: ' + String(error) });
+    } catch {
+      res.status(500).json({ error: 'Could not reach Telegram to test the token.' });
     }
   });
 

@@ -6,6 +6,7 @@
 import { appendFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { createHash } from 'crypto';
+import { redactDeep } from './redact.js';
 
 export class AuditLog {
   private logDir: string;
@@ -24,7 +25,8 @@ export class AuditLog {
       timestamp: new Date().toISOString(),
       category,
       action,
-      data,
+      // Credential-shaped values never reach the log, whatever a caller passes.
+      data: redactDeep(data) as Record<string, any>,
       previousHash: this.lastHash,
     };
 

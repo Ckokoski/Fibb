@@ -137,6 +137,12 @@ export class WritingStatsStore {
     }
   }
 
+  /** A copy of the per-day word counts (date YYYY-MM-DD -> words). Never throws. */
+  async getDays(): Promise<Record<string, number>> {
+    try { await this.initialize(); } catch { /* use what is loaded */ }
+    return { ...this.data.days };
+  }
+
   /**
    * Compute the dashboard snapshot. `activeProjects` is supplied by the
    * caller (route already reads workspace/projects) since this store has no

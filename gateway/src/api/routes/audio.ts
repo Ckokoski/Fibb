@@ -8,6 +8,7 @@ import type { ApiContext } from '../context.js';
 import path from 'path';
 import multer from 'multer';
 import { safePath } from '../context.js';
+import { contentDisposition } from '../../security/paths.js';
 import { isKnownVoice, parseVoiceId } from '../../services/tts-catalog.js';
 
 // Dedicated memory-storage uploader for audio clips: the shared manuscript
@@ -167,7 +168,7 @@ export function registerAudioRoutes(ctx: ApiContext): void {
       wav: 'audio/wav',
     };
     res.setHeader('Content-Type', mimeTypes[ext || ''] || 'audio/mpeg');
-    res.setHeader('Content-Disposition', `inline; filename="${fname}"`);
+    res.setHeader('Content-Disposition', contentDisposition('inline', fname));
     const { createReadStream } = await import('fs');
     createReadStream(filePath).pipe(res);
   });

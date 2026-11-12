@@ -1,6 +1,7 @@
 export type StreamEvent =
   | { type: 'chunk'; content: string }
   | { type: 'done'; content: string }
+  | { type: 'tool'; name: string; status: 'start' | 'done' | 'needs-approval'; summary: string }
   | { type: 'error'; message: string };
 
 export async function* streamChat(message: string, channel = 'webchat'): AsyncGenerator<StreamEvent> {

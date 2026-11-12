@@ -13,9 +13,9 @@
  * unchanged, so gateway/src/index.ts requires no edit.
  */
 
-// NOTE: All endpoints are currently unauthenticated.
-// This is acceptable because the server binds to 127.0.0.1 only (localhost).
-// For remote access, implement Bearer token auth using the vault.
+// NOTE: The server binds to 127.0.0.1 only. Every /api/* request must pass the
+// request guard (security/request-guard.ts) and carry the install's session
+// token (security/session-token.ts); both are installed in gateway/src/index.ts.
 
 import { Application } from 'express';
 import { createApiContext } from './context.js';
@@ -43,6 +43,10 @@ import { registerJudgeCharacterVoiceRoutes } from './routes/judge-character-voic
 import { registerResearchLookupRoutes } from './routes/research-lookup.js';
 import { registerStructuresPlotRoutes } from './routes/structures-plot.js';
 import { registerReaderPanelRoutes } from './routes/reader-panel.js';
+import { registerTaskRoutes } from './routes/tasks.js';
+import { registerConnectorRoutes } from './routes/connectors.js';
+import { registerNoticeRoutes } from './routes/notices.js';
+import { registerPlaybookRoutes } from './routes/playbook.js';
 
 export function createAPIRoutes(app: Application, gateway: any, rootDir?: string): void {
   const ctx = createApiContext(app, gateway, rootDir);
@@ -73,4 +77,8 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   registerResearchLookupRoutes(ctx);
   registerStructuresPlotRoutes(ctx);
   registerReaderPanelRoutes(ctx);
+  registerTaskRoutes(ctx);
+  registerConnectorRoutes(ctx);
+  registerNoticeRoutes(ctx);
+  registerPlaybookRoutes(ctx);
 }

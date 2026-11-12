@@ -3,6 +3,7 @@
  * gateway/src/api/routes.ts as part of the Phase 2 god-file split.
  * Behavior-preserving: handler bodies below are unchanged from the original.
  */
+import { contentDisposition } from '../../security/paths.js';
 import { Request, Response } from 'express';
 import type { ApiContext } from '../context.js';
 import multer from 'multer';
@@ -498,7 +499,7 @@ export function registerDocumentRoutes(ctx: ApiContext): void {
       epub: 'application/epub+zip',
     };
     res.setHeader('Content-Type', mimeTypes[ext || ''] || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Disposition', contentDisposition('attachment', filename));
 
     const { createReadStream } = await import('fs');
     createReadStream(filePath).pipe(res);

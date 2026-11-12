@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ConnectorsSection } from './ConnectorsSection';
+import { cue, setSounds, soundsOn } from '../lib/sound';
+import { getNoticeSettings, setNoticeSettings } from '../lib/tasks';
 import {
   deleteVaultKey, getModels, getVaultKeys, refreshProviders, saveVaultKey, setModel,
   type Companion,
 } from '../lib/api';
 import { micSupported } from '../lib/voice';
-import { LookPicker } from './LookPicker';
 import { VoiceSection } from './VoiceSection';
 
 const SLOTS = [
@@ -64,6 +66,10 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
   const [online, setOnline] = useState<string[] | null>(null);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState('');
+  const [tab, setTab] = useState<'connect' | 'voice' | 'look' | 'more'>('connect');
+  const [sounds, setSoundsState] = useState(soundsOn);
+  const [notices, setNotices] = useState(true);
+  useEffect(() => { void getNoticeSettings().then(x => setNotices(x.enabled)); }, []);
 
   const reload = useCallback(() => {
     getVaultKeys().then(setKeys).catch(() => {});
@@ -75,7 +81,14 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
 
   return (
     <div className="thread"><div className="thread-inner settings">
+      <h2 className="view-title">Settings</h2>
+      <div className="seg" role="tablist" aria-label="Settings sections">
+        {([['connect', 'Connections'], ['voice', 'Voice'], ['look', 'Preferences'], ['more', 'Advanced']] as const).map(([id, label]) => (
+          <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
       {error && <div className="card" role="alert" style={{ color: 'var(--red)' }}>{error}</div>}
+      <div className="tabpane" hidden={tab !== 'connect'}>
       <section className="card">
         <div className="t">Free, no key needed</div>
         <ul className="free">
@@ -100,6 +113,8 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
         {SLOTS.map(slot => <KeyRow key={slot.key} slot={slot} connected={keys.includes(slot.key)} onChanged={reload} />)}
       </section>
 
+      <ConnectorsSection />
+
       {models.length > 0 && (
         <section className="card">
           <div className="t">Models</div>
@@ -118,19 +133,34 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
         </section>
       )}
 
+      </div>
+      <div className="tabpane" hidden={tab !== 'voice'}>
       <VoiceSection voicePreset={companion?.voicePreset} onChanged={onCompanionChanged} />
 
+      </div>
+      <div className="tabpane" hidden={tab !== 'look'}>
       <section className="card">
-        <div className="t">Appearance</div>
-        <div className="s">Fibb is always Fibb. Pick the look you like.</div>
-        <LookPicker onPicked={onCompanionChanged} />
+        <div className="t">Fibb notices how you work</div>
+        <label className="voicerow"><span className="s" style={{ margin: 0 }}>Fibb looks at what you do inside Fibb, such as when you write and what you ask for often, and now and then suggests a shortcut. It never watches anything outside Fibb. A short summary goes to your AI model to write the suggestion.</span>
+          <input type="checkbox" checked={notices} aria-label="Let Fibb suggest improvements" onChange={async e => { const v = e.target.checked; setNotices(v); await setNoticeSettings(v); }} />
+        </label>
       </section>
 
+      <section className="card">
+        <div className="t">Sounds</div>
+        <label className="voicerow"><span className="s" style={{ margin: 0 }}>A soft chime when Fibb finishes a reply or celebrates with you.</span>
+          <input type="checkbox" checked={sounds} aria-label="Play soft sounds" onChange={e => { setSounds(e.target.checked); setSoundsState(e.target.checked); if (e.target.checked) cue('done', true); }} />
+        </label>
+      </section>
+
+      </div>
+      <div className="tabpane" hidden={tab !== 'more'}>
       <section className="card">
         <div className="t">Advanced</div>
         <div className="s"><a href="/legacy/">Previous dashboard</a></div>
         <div className="s">Voice notes without a browser microphone use a local Whisper binary: set <code>AUTHORAGENT_WHISPER_PATH</code> in the environment before starting Fibb.</div>
       </section>
+      </div>
     </div></div>
   );
 }

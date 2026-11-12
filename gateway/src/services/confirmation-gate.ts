@@ -30,6 +30,7 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { randomBytes } from 'crypto';
 
 // ═══════════════════════════════════════════════════════════
 // Types
@@ -149,7 +150,9 @@ export class ConfirmationGateService {
 
     const now = new Date();
     const req: ConfirmationRequest = {
-      id: `conf-${now.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
+      // Unguessable: 128 bits from the OS CSPRNG. Knowing an id must never be
+      // possible for anything that did not get it from the gate.
+      id: `conf-${randomBytes(16).toString('hex')}`,
       createdAt: now.toISOString(),
       expiresAt: new Date(now.getTime() + this.expiryMs).toISOString(),
       service: input.service,
