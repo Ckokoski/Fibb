@@ -94,7 +94,7 @@ export class ToolRunner {
     const name = String(call?.name ?? '');
     const args = call?.args && typeof call.args === 'object' && !Array.isArray(call.args) ? call.args : {};
     // Arg KEYS only: values may be manuscript text, email bodies or secrets.
-    const base = { tool: name.slice(0, 60), argKeys: Object.keys(args).slice(0, 20), channel: ctx.channel };
+    const base = { tool: name.slice(0, 64), argKeys: Object.keys(args).slice(0, 20), channel: ctx.channel };
 
     const tool = this.registry.get(name);
     if (!tool) {
@@ -122,7 +122,7 @@ export class ToolRunner {
     }
 
     try {
-      const raw = String((await withTimeout(tool.run(args), this.deps.timeoutMs ?? DEFAULT_TIMEOUT_MS)) ?? '');
+      const raw = String((await withTimeout(tool.run(args), tool.timeoutMs ?? this.deps.timeoutMs ?? DEFAULT_TIMEOUT_MS)) ?? '');
       let flagged = false;
       try { flagged = this.deps.injection.detect(raw).detected === true; } catch { flagged = false; }
       if (turn) {
@@ -197,7 +197,7 @@ export class ToolRunner {
    */
   async runApproved(req: ConfirmationRequest): Promise<string> {
     const name = String(req?.payload?.tool ?? req?.action ?? '');
-    const base = { tool: name.slice(0, 60), approvalId: req.id };
+    const base = { tool: name.slice(0, 64), approvalId: req.id };
     if (req?.status !== 'approved') {
       this.audit('approved-run', { ...base, ok: false, reason: 'not approved' });
       throw new Error('This request has not been approved.');
@@ -222,7 +222,7 @@ export class ToolRunner {
     }
     this.pending.delete(req.id);
     try {
-      const out = String((await withTimeout(tool.run(args), this.deps.timeoutMs ?? DEFAULT_TIMEOUT_MS)) ?? '');
+      const out = String((await withTimeout(tool.run(args), tool.timeoutMs ?? this.deps.timeoutMs ?? DEFAULT_TIMEOUT_MS)) ?? '');
       this.audit('approved-run', { ...base, argKeys: Object.keys(args).slice(0, 20), ok: true });
       return shortOutcome(out);
     } catch (err) {

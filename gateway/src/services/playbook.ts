@@ -11,7 +11,7 @@
  */
 
 export type PlayNeed = 'book' | 'google' | 'browser';
-export type PlayCategory = 'Story' | 'Research' | 'Marketing' | 'Routine' | 'Email and calendar';
+export type PlayCategory = 'Story' | 'Research' | 'Marketing' | 'Routine' | 'Tools' | 'Email and calendar';
 
 export type PlayAction =
   | { kind: 'task'; title: string; detail: string }
@@ -32,7 +32,7 @@ export interface Play {
 
 export interface PlayContext { bookTitle?: string; chapter?: number; hasGoogle: boolean; hasBrowser: boolean }
 
-export const PLAY_CATEGORIES: PlayCategory[] = ['Story', 'Research', 'Marketing', 'Routine', 'Email and calendar'];
+export const PLAY_CATEGORIES: PlayCategory[] = ['Story', 'Research', 'Marketing', 'Routine', 'Tools', 'Email and calendar'];
 
 // ── Shared parts of the work orders ──
 
@@ -524,6 +524,35 @@ export const PLAYS: Play[] = [
     needs: [],
     label: 'Read it to me',
     action: { kind: 'say', say: 'Read me the last scene aloud.' },
+  },
+
+  // ── Tools (Fibb writes a tiny helper tool; see services/tool-shelf.ts) ──
+  {
+    id: 'tool-name-counter',
+    category: 'Tools',
+    title: 'Count character names on a page',
+    blurb: 'I can make you a bookmark tool that counts how often each character name appears on a page.',
+    needs: [],
+    label: 'Make the tool',
+    action: { kind: 'say', say: 'Make me a bookmark tool that counts how often each character name appears on the page.' },
+  },
+  {
+    id: 'tool-repeat-finder',
+    category: 'Tools',
+    title: 'Spot repeated phrases',
+    blurb: 'I can make you a bookmark tool that highlights phrases you repeat on the page you are reading.',
+    needs: [],
+    label: 'Make the tool',
+    action: { kind: 'say', say: 'Make me a bookmark tool that highlights phrases I repeat on the page I am reading.' },
+  },
+  {
+    id: 'tool-doc-word-goal',
+    category: 'Tools',
+    title: 'Add a word goal menu to a Google Doc',
+    blurb: 'I can write a small script that adds a word goal menu to your Google Doc.',
+    needs: [],
+    label: 'Make the tool',
+    action: { kind: 'say', say: 'Make me a Google Docs script that adds a menu showing how close I am to my word goal.' },
   },
 
   // ── Email and calendar ──

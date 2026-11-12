@@ -23,6 +23,7 @@ const REQUIRED: Record<PlayCategory, string[]> = {
   Research: ['comp-titles', 'setting-research', 'fact-check-chapter', 'name-ideas', 'genre-expectations'],
   Marketing: ['back-cover-blurb', 'newsletter-draft', 'social-week', 'query-letter', 'launch-checklist', 'reader-persona'],
   Routine: ['morning-recap', 'weekly-review', 'streak-nudge', 'read-last-scene'],
+  Tools: ['tool-name-counter', 'tool-repeat-finder', 'tool-doc-word-goal'],
   'Email and calendar': ['inbox-triage', 'writing-time-this-week', 'follow-ups'],
 };
 
@@ -246,10 +247,11 @@ describe('pickPlay', () => {
   });
 
   it('visits the categories in order', () => {
-    expect([0, 1, 2, 3, 4].map(seed => pickPlay(PLAYS, full, { excludeIds: none, seed })!.category)).toEqual(PLAY_CATEGORIES);
-    // Without Google the mail plays drop out and four categories take turns.
-    expect([0, 1, 2, 3, 4].map(seed => pickPlay(PLAYS, bare, { excludeIds: none, seed })!.category))
-      .toEqual(['Story', 'Research', 'Marketing', 'Routine', 'Story']);
+    expect(PLAY_CATEGORIES).toEqual(['Story', 'Research', 'Marketing', 'Routine', 'Tools', 'Email and calendar']);
+    expect([0, 1, 2, 3, 4, 5].map(seed => pickPlay(PLAYS, full, { excludeIds: none, seed })!.category)).toEqual(PLAY_CATEGORIES);
+    // Without Google the mail plays drop out and five categories take turns.
+    expect([0, 1, 2, 3, 4, 5].map(seed => pickPlay(PLAYS, bare, { excludeIds: none, seed })!.category))
+      .toEqual(['Story', 'Research', 'Marketing', 'Routine', 'Tools', 'Story']);
   });
 
   it('avoidCategory skips the previous category unless it is the only one left', () => {
