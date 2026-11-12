@@ -333,6 +333,16 @@ label.voicerow { flex-wrap: nowrap; gap: 16px; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn, :root:not([data-theme="light"]) .chip, :root:not([data-theme="light"]) .toolbar, :root:not([data-theme="light"]) .streak-chip { box-shadow: inset 0 1px 0 rgba(255,255,255,.06); } }
 @media (max-width: 900px) { .toolbar .ibtn { width: 34px; height: 34px; } }
 
+.plays { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; margin-top: 14px; }
+.play { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 14px; border-radius: 20px; background: var(--surface-2); border: 1px solid transparent; transition: transform .3s var(--ease), box-shadow .3s var(--ease), border-color .2s; animation: rise .5s var(--ease) backwards; }
+.play:hover { transform: translateY(-3px); box-shadow: var(--shadow); border-color: var(--line); }
+.play b { font-size: 14px; font-weight: 600; line-height: 1.3; }
+.play .s { margin: 0; font-size: 12.5px; line-height: 1.45; flex: 1; }
+.play .btn { margin-top: 4px; padding: 6px 14px; font-size: 12.5px; }
+.play.off { opacity: .62; }
+.play.off:hover { transform: none; box-shadow: none; }
+.play .badge { margin-top: 4px; text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 11px; }
+
 /* Tonight drawer (desktop) */
 .drawer { position: fixed; top: 14px; right: 14px; bottom: 14px; width: 350px; max-width: 92vw; background: var(--surface); border: 1px solid var(--line); border-radius: 28px; box-shadow: var(--shadow); transform: translateX(calc(100% + 20px)); visibility: hidden; transition: transform .4s var(--ease), visibility 0s linear .4s; z-index: 21; padding: 22px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
 .drawer.open { transform: none; visibility: visible; transition: transform .4s var(--ease), visibility 0s; }

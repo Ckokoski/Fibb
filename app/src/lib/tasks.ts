@@ -87,3 +87,14 @@ export const acceptNotice = (id: string) => j<{ ok: boolean; say?: string; messa
 export const dismissNotice = (id: string) => j<{ ok: boolean }>(`/api/notices/${encodeURIComponent(id)}/dismiss`, post(), { ok: false });
 export const getNoticeSettings = () => j<{ enabled: boolean }>('/api/notices/settings', undefined, { enabled: true });
 export const setNoticeSettings = (enabled: boolean) => j<{ enabled: boolean }>('/api/notices/settings', post({ enabled }), { enabled });
+
+// The playbook: things Fibb can do for an author, runnable with one click.
+export interface PlayCard { id: string; category: string; title: string; blurb: string; label: string; kind: 'task' | 'schedule' | 'say'; available: boolean; missing?: 'book' | 'google' | 'browser' }
+export const getPlaybook = () => j<{ plays: PlayCard[] }>('/api/playbook', undefined, { plays: [] }).then(r => r.plays || []);
+export async function runPlay(id: string, when: 'tonight' | 'now' = 'now'): Promise<{ ok: boolean; message?: string; say?: string; error?: string }> {
+  try {
+    const r = await fetch(`/api/playbook/${encodeURIComponent(id)}/run`, post({ when }));
+    const body = await r.json().catch(() => ({}));
+    return r.ok ? body : { ok: false, error: body.error || 'That did not work.' };
+  } catch { return { ok: false, error: 'Fibb is not reachable.' }; }
+}

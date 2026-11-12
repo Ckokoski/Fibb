@@ -7,7 +7,6 @@ import {
   type Companion,
 } from '../lib/api';
 import { micSupported } from '../lib/voice';
-import { LookPicker } from './LookPicker';
 import { VoiceSection } from './VoiceSection';
 
 const SLOTS = [
@@ -84,7 +83,7 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
     <div className="thread"><div className="thread-inner settings">
       <h2 className="view-title">Settings</h2>
       <div className="seg" role="tablist" aria-label="Settings sections">
-        {([['connect', 'Connections'], ['voice', 'Voice'], ['look', 'Look and feel'], ['more', 'Advanced']] as const).map(([id, label]) => (
+        {([['connect', 'Connections'], ['voice', 'Voice'], ['look', 'Preferences'], ['more', 'Advanced']] as const).map(([id, label]) => (
           <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
@@ -140,12 +139,6 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
 
       </div>
       <div className="tabpane" hidden={tab !== 'look'}>
-      <section className="card">
-        <div className="t">Appearance</div>
-        <div className="s">Fibb is always Fibb. Pick the look you like.</div>
-        <LookPicker onPicked={onCompanionChanged} />
-      </section>
-
       <section className="card">
         <div className="t">Fibb notices how you work</div>
         <label className="voicerow"><span className="s" style={{ margin: 0 }}>Fibb looks at what you do inside Fibb, such as when you write and what you ask for often, and now and then suggests a shortcut. It never watches anything outside Fibb. A short summary goes to your AI model to write the suggestion.</span>

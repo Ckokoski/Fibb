@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Companion, MascotStateName } from '../lib/api';
 
-const FALLBACK = '/mascots/nib/nib-idle.svg';
 const STATES: MascotStateName[] = ['idle', 'thinking', 'listening', 'celebrating'];
 const DOZE_AFTER_MS = 3 * 60 * 1000;
 const svgCache = new Map<string, Promise<string | null>>();
@@ -40,7 +39,7 @@ function Face({ src, on }: { src: string; on: boolean }) {
   return <img src={src} alt="" className={cls} draggable={false} aria-hidden="true" />;
 }
 
-export function Hero({ c, state, line2, compact = false, big = false }: { c: Companion | null; state: MascotStateName | 'speaking'; line2?: string; compact?: boolean; big?: boolean }) {
+export function Hero({ state, line2, compact = false, big = false }: { c: Companion | null; state: MascotStateName | 'speaking'; line2?: string; compact?: boolean; big?: boolean }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [dozing, setDozing] = useState(false);
 
@@ -76,7 +75,7 @@ export function Hero({ c, state, line2, compact = false, big = false }: { c: Com
       <div className="hero-img-wrap" ref={wrap}>
         <div className="hero-float">
           {/* All four states stay mounted and crossfade by opacity so switching never flickers. */}
-          {STATES.map(s => <Face key={s} src={c?.states?.[s] ?? c?.image ?? FALLBACK} on={s === shown} />)}
+          {STATES.map(s => <Face key={s} src={`/mascots/nib/nib-${s}.svg`} on={s === shown} />)}
         </div>
         {asleep && <span className="zzz" aria-hidden="true">z</span>}
       </div>

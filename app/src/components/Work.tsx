@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Md } from './Message';
 import {
-  addSchedule, addTask, approve, deleteSchedule, deleteTask, describeCron, getSchedules, groupTasks, patchTask, reject, runQueued,
+  addSchedule, addTask, approve, getPlaybook, runPlay, type PlayCard, deleteSchedule, deleteTask, describeCron, getSchedules, groupTasks, patchTask, reject, runQueued,
   SCHEDULE_PRESETS, type Approval, type Schedule, type Task,
 } from '../lib/tasks';
 import { cue } from '../lib/sound';
@@ -72,7 +72,48 @@ function ReviewItem({ t, reload }: { t: Task; reload: () => void }) {
   );
 }
 
-export function TasksView({ tasks, approvals, reload }: { tasks: Task[]; approvals: Approval[]; reload: () => void }) {
+const MISSING: Record<string, string> = { google: 'Connect Google in Settings first', browser: "Needs Fibb's browser (Edge or Chrome)", book: 'Tell Fibb about your book first' };
+
+/** A gallery of things Fibb can do, grouped by kind of help. One click runs one. */
+export function Playbook({ onSay, reload }: { onSay: (text: string) => void; reload: () => void }) {
+  const [plays, setPlays] = useState<PlayCard[]>([]);
+  const [cat, setCat] = useState('');
+  const [note, setNote] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState('');
+  useEffect(() => { void getPlaybook().then(p => { setPlays(p); setCat(c => c || p[0]?.category || ''); }); }, []);
+  if (!plays.length) return null;
+  const cats = [...new Set(plays.map(p => p.category))];
+  const run = async (p: PlayCard) => {
+    setBusy(p.id);
+    const r = await runPlay(p.id);
+    setBusy('');
+    if (r.say) { onSay(r.say); return; }
+    setNote(n => ({ ...n, [p.id]: r.ok ? (r.message || (p.kind === 'schedule' ? 'Added to your schedule.' : 'On it. I will leave it under Ready for your review.')) : (r.error || 'That did not work.') }));
+    reload();
+  };
+  return (
+    <section className="card playbook">
+      <div className="t">Things I can do for you</div>
+      <div className="s">Pick one and I will get started. Anything I make waits for your yes.</div>
+      <div className="seg" role="tablist" aria-label="Kinds of help" style={{ marginTop: 12 }}>
+        {cats.map(c => <button key={c} role="tab" aria-selected={c === cat} className={c === cat ? 'on' : ''} onClick={() => setCat(c)}>{c}</button>)}
+      </div>
+      <div className="plays">
+        {plays.filter(p => p.category === cat).map(p => (
+          <div key={p.id} className={`play${p.available ? '' : ' off'}`}>
+            <b>{p.title}</b>
+            <span className="s">{note[p.id] || p.blurb}</span>
+            {p.available
+              ? !note[p.id] && <button className="btn" disabled={busy === p.id} onClick={() => run(p)}>{busy === p.id ? 'Starting…' : p.label}</button>
+              : <span className="badge">{MISSING[p.missing || ''] || 'Not available yet'}</span>}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function TasksView({ tasks, approvals, reload, onSay }: { tasks: Task[]; approvals: Approval[]; reload: () => void; onSay: (text: string) => void }) {
   const g = groupTasks(tasks);
   const [title, setTitle] = useState('');
   const [detail, setDetail] = useState('');
@@ -118,6 +159,8 @@ export function TasksView({ tasks, approvals, reload }: { tasks: Task[]; approva
         </div>
         {err && <div className="s" role="alert" style={{ color: 'var(--red)' }}>{err}</div>}
       </section>
+
+      <Playbook onSay={onSay} reload={reload} />
 
       {g.review.length > 0 && <h4 className="side-h">Ready for your review</h4>}
       {g.review.map(t => <ReviewItem key={t.id} t={t} reload={reload} />)}

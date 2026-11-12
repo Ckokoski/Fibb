@@ -108,6 +108,7 @@ export function App() {
   const say = useCallback((t: string) => { setView('chat'); chat.current?.say(t); }, []);
   const commands: Command[] = [
     { id: 'tonight', label: 'Open Tonight', run: () => setTonight(true) },
+    { id: 'playbook', label: 'Show me things Fibb can do', run: () => setView('tasks') },
     { id: 'read', label: 'Read the last reply aloud', run: () => chat.current?.readLast() },
     { id: 'aloud', label: voice.readAloud ? 'Turn read aloud off' : 'Turn read aloud on', run: () => setVoice(v => ({ ...v, readAloud: !v.readAloud })) },
     { id: 'theme', label: 'Switch theme', run: () => setTheme(t => cycleTheme(t)) },
@@ -152,7 +153,7 @@ export function App() {
           {view === 'settings' && <SettingsView companion={companion} onCompanionChanged={loadCompanion} />}
           {view === 'books' && <EmptyState title="No books yet" text="Tell Fibb what you're writing and it will keep the bible, the chapters, and the goal here." action="Start in chat" onAction={() => setView('chat')} />}
           {view === 'ideas' && <IdeasView tasks={work.tasks} reload={work.reload} onChat={() => setView('chat')} />}
-          {view === 'tasks' && <TasksView tasks={work.tasks} approvals={work.approvals} reload={work.reload} />}
+          {view === 'tasks' && <TasksView tasks={work.tasks} approvals={work.approvals} reload={work.reload} onSay={say} />}
         </main>
       </div>
       {cmd && <CommandBar open onClose={() => setCmd(false)} commands={commands} onSay={say} />}
