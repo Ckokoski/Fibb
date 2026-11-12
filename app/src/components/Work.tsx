@@ -94,6 +94,7 @@ export function TasksView({ tasks, approvals, reload }: { tasks: Task[]; approva
 
   return (
     <div className="thread"><div className="thread-inner settings">
+      <h2 className="view-title">Tasks</h2>
       {approvals.map(a => <ApprovalCard key={a.id} a={a} onDone={reload} />)}
 
       <section className="card">
@@ -175,6 +176,7 @@ export function IdeasView({ tasks, reload, onChat }: { tasks: Task[]; reload: ()
   const save = async () => { const t = text.trim(); if (!t) return; await addTask({ title: t.slice(0, 200), detail: t, kind: 'idea' }).catch(() => {}); setText(''); reload(); };
   return (
     <div className="thread"><div className="thread-inner settings">
+      <h2 className="view-title">Ideas</h2>
       <section className="card">
         <div className="t">Catch an idea</div>
         <div className="s">Type it here, or say "idea: …" to Fibb anywhere, including Telegram.</div>

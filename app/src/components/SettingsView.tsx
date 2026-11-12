@@ -66,6 +66,7 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
   const [online, setOnline] = useState<string[] | null>(null);
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState('');
+  const [tab, setTab] = useState<'connect' | 'voice' | 'look' | 'more'>('connect');
   const [sounds, setSoundsState] = useState(soundsOn);
 
   const reload = useCallback(() => {
@@ -78,7 +79,14 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
 
   return (
     <div className="thread"><div className="thread-inner settings">
+      <h2 className="view-title">Settings</h2>
+      <div className="seg" role="tablist" aria-label="Settings sections">
+        {([['connect', 'Connections'], ['voice', 'Voice'], ['look', 'Look and feel'], ['more', 'Advanced']] as const).map(([id, label]) => (
+          <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'on' : ''} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
       {error && <div className="card" role="alert" style={{ color: 'var(--red)' }}>{error}</div>}
+      <div className="tabpane" hidden={tab !== 'connect'}>
       <section className="card">
         <div className="t">Free, no key needed</div>
         <ul className="free">
@@ -123,8 +131,12 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
         </section>
       )}
 
+      </div>
+      <div className="tabpane" hidden={tab !== 'voice'}>
       <VoiceSection voicePreset={companion?.voicePreset} onChanged={onCompanionChanged} />
 
+      </div>
+      <div className="tabpane" hidden={tab !== 'look'}>
       <section className="card">
         <div className="t">Appearance</div>
         <div className="s">Fibb is always Fibb. Pick the look you like.</div>
@@ -138,11 +150,14 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
         </label>
       </section>
 
+      </div>
+      <div className="tabpane" hidden={tab !== 'more'}>
       <section className="card">
         <div className="t">Advanced</div>
         <div className="s"><a href="/legacy/">Previous dashboard</a></div>
         <div className="s">Voice notes without a browser microphone use a local Whisper binary: set <code>AUTHORAGENT_WHISPER_PATH</code> in the environment before starting Fibb.</div>
       </section>
+      </div>
     </div></div>
   );
 }

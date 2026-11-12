@@ -17,7 +17,9 @@ export function TonightBody({ refreshKey, companion, tasks = [], onOpenTasks }: 
   return (
     <>
       <div>
-        <div className="streak"><span className="n">{streak}</span><span className="l">day streak · {words.toLocaleString()} words</span></div>
+        {streak > 0
+          ? <div className="streak"><span className="n">{streak}</span><span className="l">day streak · {words.toLocaleString()} words</span></div>
+          : <div className="streak"><span className="l">{words > 0 ? `${words.toLocaleString()} words so far. Write today to start a streak.` : 'Write today to start a streak.'}</span></div>}
         {book?.goal && (<>
           <div className="bar"><i style={{ width: book.chapter ? `${Math.min(100, book.chapter * 4)}%` : '8%' }} /></div>
           <div className="kv"><span>{book.title}</span><span>{book.goal}</span></div>

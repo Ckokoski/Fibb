@@ -120,15 +120,16 @@ export function VoiceSection({ voicePreset, onChanged }: { voicePreset?: string;
           <fieldset className="voices" key={g}>
             <legend>{g}</legend>
             {group.map(v => (
-              <div className="voicerow" key={v.id}>
-                <span>
-                  <b>{v.label}</b> <span className="s">{[v.accent, v.note].filter(Boolean).join(' · ')}</span>
-                  {current_id === ns(v.id) && <span className="badge on-badge">Active</span>}
-                </span>
-                <span className="vact">
-                  <button className="btn" disabled={!!previewing} onClick={() => preview(v.id)}>{previewing === v.id ? 'Playing…' : 'Preview'}</button>
-                  <button className="btn pri" disabled={current_id === ns(v.id)} onClick={() => use(v.id)}>Use as Fibb's voice</button>
-                </span>
+              <div className={`voicerow voice${current_id === ns(v.id) ? ' on' : ''}`} key={v.id}>
+                <button className="play" disabled={!!previewing} onClick={() => preview(v.id)} aria-label={`Preview ${v.label}`} title="Preview">
+                  {previewing === v.id
+                    ? <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden><rect x="6" y="5" width="4" height="14" rx="1.5" /><rect x="14" y="5" width="4" height="14" rx="1.5" /></svg>
+                    : <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>}
+                </button>
+                <span className="vmeta"><b>{v.label.replace(/\b[a-z]/g, c => c.toUpperCase())}</b><span className="s">{[v.accent, v.note].filter(Boolean).join(' · ')}</span></span>
+                {current_id === ns(v.id)
+                  ? <span className="badge on-badge">Fibb's voice</span>
+                  : <button className="btn" onClick={() => use(v.id)}>Use</button>}
               </div>
             ))}
           </fieldset>
