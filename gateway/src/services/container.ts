@@ -77,6 +77,7 @@ import { ToolRegistry } from './tools/registry.js';
 import { ToolRunner } from './tools/runner.js';
 import { BrowserService } from './browser.js';
 import { GoogleService } from './google.js';
+import { McpConnections } from './mcp.js';
 
 /**
  * Shape of the object the gateway's getServices() returns to the API routes.
@@ -140,6 +141,7 @@ export interface GatewayServices {
   toolRunner: ToolRunner;
   browser: BrowserService;
   google: GoogleService;
+  mcp: McpConnections;
 }
 
 /**
@@ -216,6 +218,7 @@ export class ServiceContainer {
   toolRunner!: ToolRunner;
   browser!: BrowserService;
   google!: GoogleService;
+  mcp!: McpConnections;
 
   /**
    * The object exposed to API routes. Identical keys/order to the former
@@ -280,6 +283,7 @@ export class ServiceContainer {
       toolRunner: this.toolRunner,
       browser: this.browser,
       google: this.google,
+      mcp: this.mcp,
     };
   }
 }

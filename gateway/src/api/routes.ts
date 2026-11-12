@@ -45,6 +45,7 @@ import { registerStructuresPlotRoutes } from './routes/structures-plot.js';
 import { registerReaderPanelRoutes } from './routes/reader-panel.js';
 import { registerTaskRoutes } from './routes/tasks.js';
 import { registerConnectorRoutes } from './routes/connectors.js';
+import { registerMcpRoutes } from './routes/mcp.js';
 import { registerNoticeRoutes } from './routes/notices.js';
 import { registerPlaybookRoutes } from './routes/playbook.js';
 
@@ -79,6 +80,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   registerReaderPanelRoutes(ctx);
   registerTaskRoutes(ctx);
   registerConnectorRoutes(ctx);
+  registerMcpRoutes(ctx);
   registerNoticeRoutes(ctx);
   registerPlaybookRoutes(ctx);
 }

@@ -45,6 +45,7 @@
   "license": "MIT",
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "adm-zip": "^0.5.16",
     "better-sqlite3": "^11.3.0",
     "cors": "^2.8.5",

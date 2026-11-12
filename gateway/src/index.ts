@@ -89,6 +89,7 @@ import { ToolRegistry } from './services/tools/registry.js';
 import { ToolRunner } from './services/tools/runner.js';
 import { BrowserService } from './services/browser.js';
 import { GoogleService } from './services/google.js';
+import { McpConnections } from './services/mcp.js';
 import type { ToolEvent } from './services/message-pipeline.js';
 import { TelegramBridge } from './bridges/telegram.js';
 import { DiscordBridge } from './bridges/discord.js';
@@ -252,6 +253,8 @@ class FibbGateway {
   private set browser(v: BrowserService) { this.services.browser = v; }
   private get google(): GoogleService { return this.services.google; }
   private set google(v: GoogleService) { this.services.google = v; }
+  private get mcp(): McpConnections { return this.services.mcp; }
+  private set mcp(v: McpConnections) { this.services.mcp = v; }
 
   // The core chat pipeline. Owns per-channel conversation history and the
   // injection/rate-limit/context/routing/persistence/fallback flow. Built once
@@ -921,6 +924,20 @@ class FibbGateway {
       audit: this.audit,
     });
     this.toolRunner.registerApprovalExecutor();
+    // Connectors the author pasted a link for (MCP). Reading the saved list
+    // is local and quick; the servers themselves are contacted in the
+    // background so a dead connector can never slow or stop startup.
+    this.mcp = new McpConnections({
+      vault: this.vault,
+      workspaceDir: join(ROOT_DIR, 'workspace'),
+      registry: this.toolRegistry,
+      injection: this.injectionDetector,
+      audit: this.audit,
+    });
+    try {
+      await this.mcp.initialize();
+      void this.mcp.connectAll().catch(() => { /* reported per connector in Settings */ });
+    } catch { /* a broken connector list must not stop Fibb */ }
     logger.info(`  ✓ Tools: ${this.toolRegistry.list().length} registered (browser ${this.browser.status().available ? 'ready' : 'unavailable'}, Google ${this.google.isConnected() ? 'connected' : 'not connected'})`);
 
     // ── Phase 7: Heartbeat ──
@@ -2547,6 +2564,7 @@ class FibbGateway {
     this.telegram?.disconnect();
     this.discord?.disconnect();
     try { await this.browser?.close(); } catch { /* best effort */ }
+    try { await this.mcp?.close(); } catch { /* best effort */ }
     await this.activityLog?.log({
       type: 'system',
       source: 'internal',
