@@ -6,6 +6,9 @@
  *   POST /api/notices/:id/dismiss   -> { ok: true }                   (404 unknown, 409 not new)
  *   GET  /api/notices/settings      -> { enabled }
  *   POST /api/notices/settings      { enabled: boolean } -> { enabled }   (400 on non-boolean)
+ *   POST /api/notices/suggest       -> { notice: { id, text, action?, createdAt } | null }
+ *                                      An idea on demand: ignores spacing and quiet hours, but
+ *                                      returns the waiting notice when there already is one.
  *
  * 503 when the service is missing.
  */
@@ -39,6 +42,15 @@ export function registerNoticeRoutes(ctx: ApiContext): void {
       res.json({ enabled: await services.notices.setEnabled(enabled) });
     } catch {
       res.status(500).json({ error: 'Could not save that setting.' });
+    }
+  });
+
+  app.post('/api/notices/suggest', async (_req: Request, res: Response) => {
+    if (!services.notices) return missing(res);
+    try {
+      res.json({ notice: await services.notices.suggestNow(new Date()) });
+    } catch {
+      refuse(res, 'failed');
     }
   });
 

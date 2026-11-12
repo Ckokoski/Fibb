@@ -680,6 +680,12 @@ class FibbGateway {
       },
       tasks: this.tasks,
       cron: this.cronScheduler,
+      // Both are created later in startup, so look them up at call time.
+      capabilities: () => ({
+        hasGoogle: this.google?.isConnected() === true,
+        hasBrowser: this.browser?.status().available === true,
+      }),
+      loadFacts: () => this.facts?.get() ?? {},
       polish: async (system, user) => {
         const provider = this.aiRouter.getCheapestAvailableProviderId();
         if (!provider) throw new Error('no provider');

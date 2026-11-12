@@ -53,7 +53,7 @@ describe('notice routes', () => {
   it('registers exactly the documented routes, settings before :id', () => {
     expect([...h.routes.keys()]).toEqual([
       'GET /api/notices', 'GET /api/notices/settings', 'POST /api/notices/settings',
-      'POST /api/notices/:id/accept', 'POST /api/notices/:id/dismiss',
+      'POST /api/notices/suggest', 'POST /api/notices/:id/accept', 'POST /api/notices/:id/dismiss',
     ]);
   });
 
@@ -128,6 +128,30 @@ describe('notice routes', () => {
     expect(r.body).toEqual({ ok: true });
     expect((await h.call('GET /api/notices')).body).toEqual({ notices: [] });
     expect((await h.call('POST /api/notices/:id/accept', { params: { id: n!.id } })).code).toBe(409);
+  });
+
+  it('suggest: an idea on demand, the waiting notice when there is one, null when nothing is left', async () => {
+    usage = { messages: [], tasks: [], schedules: [], writingDays: {}, facts: {} };
+    const r = await h.call('POST /api/notices/suggest');
+    expect(r.code).toBe(200);
+    expect(Object.keys(r.body)).toEqual(['notice']);
+    expect(r.body.notice).toMatchObject({ id: expect.any(String), text: expect.stringMatching(/^An idea: /), action: { label: expect.any(String), kind: expect.any(String) } });
+    expect(JSON.stringify(r.body)).not.toMatch(/"key"|"cron"|"detail"|"status"|Questions for you/);
+    // One at a time: asking again returns the same notice.
+    expect((await h.call('POST /api/notices/suggest')).body).toEqual(r.body);
+    expect((await h.call('GET /api/notices')).body.notices).toEqual([r.body.notice]);
+    // Right after a dismissal the daily look stays quiet, but asking still works.
+    await h.call('POST /api/notices/:id/dismiss', { params: { id: r.body.notice.id } });
+    expect(await notices.generate(new Date())).toBeNull();
+    const second = await h.call('POST /api/notices/suggest');
+    expect(second.body.notice.id).not.toBe(r.body.notice.id);
+
+    const none = harness({ notices: { suggestNow: async () => null } });
+    expect((await none.call('POST /api/notices/suggest')).body).toEqual({ notice: null });
+    const broken = harness({ notices: { suggestNow: async () => { throw new Error('C:\secret'); } } });
+    const bad = await broken.call('POST /api/notices/suggest');
+    expect(bad.code).toBe(500);
+    expect(JSON.stringify(bad.body)).not.toMatch(/secret/);
   });
 
   it('settings: read, switch off and on, 400 on a non-boolean or missing body', async () => {

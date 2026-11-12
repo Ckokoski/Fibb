@@ -8,7 +8,17 @@
  *    normalized phrases. Never keeps full message text.
  *  - candidateNotices(): pure. Deterministic rules, in priority order.
  *  - NoticeService: persistence (workspace/notices.json), de-duplication,
- *    pacing (one `new` notice at a time, one per 20 hours) and the actions.
+ *    pacing and the actions.
+ *
+ * When no usage rule has anything to say, one idea from the playbook
+ * (services/playbook.ts) is offered instead.
+ *
+ * Pacing, so Fibb is never a nag:
+ *  - one `new` notice at a time;
+ *  - at least 20 hours between notices, 3 days after 2 dismissals in a row,
+ *    7 days after 3 or more in a row (accepting anything resets the count);
+ *  - nothing new between 22:00 and 07:00 local time;
+ *  - a `new` notice nobody answered in 5 days expires quietly (not a dismissal).
  *
  * The cheapest model may reword the chosen suggestion. It is sent only the
  * suggestion text (with anything taken from the author's own words masked out)
@@ -20,6 +30,10 @@ import { existsSync } from 'fs';
 import { join } from 'path';
 import { logger } from './logger.js';
 import { computeStreaks } from './writing-stats.js';
+import {
+  PLAYS, PLAY_CATEGORIES, availability, renderPlay, pickPlay,
+  type Play, type PlayContext, type PlayNeed, type PlayCategory,
+} from './playbook.js';
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
@@ -28,6 +42,27 @@ export const MAX_NOTICE_CHARS = 220;
 const MAX_POLISHED_CHARS = 240;
 const MIN_GAP_MS = 20 * HOUR_MS;
 const DISMISS_QUIET_DAYS = 30;
+/** A play run on demand is not suggested again for this long. */
+export const PLAY_RERUN_QUIET_DAYS = 14;
+/** A `new` notice nobody answered expires after this long. */
+export const EXPIRE_DAYS = 5;
+export const QUIET_START_HOUR = 22;
+export const QUIET_END_HOUR = 7;
+/** Rule e never states a day count above this. */
+const MAX_STATED_DAYS = 14;
+
+/** Minimum time between two notices, given how many were dismissed in a row. */
+export function minGapMs(consecutiveDismissals: number): number {
+  if (consecutiveDismissals >= 3) return 7 * DAY_MS;
+  if (consecutiveDismissals === 2) return 3 * DAY_MS;
+  return MIN_GAP_MS;
+}
+
+/** 22:00 to 07:00 local time. */
+export function isQuietHour(now: Date): boolean {
+  const h = now.getHours();
+  return h >= QUIET_START_HOUR || h < QUIET_END_HOUR;
+}
 const MAX_STORED = 200;
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -117,6 +152,17 @@ const localKey = (d: Date): string => `${d.getFullYear()}-${d.getMonth() + 1}-${
 const argMax = (xs: number[]): number => xs.reduce((best, v, i) => (v > xs[best] ? i : best), 0);
 const isRequestPhrase = (p: string): boolean => p.length >= 10 && p.includes(' ');
 const FINISHED_STAGE = /publish|released|finished|complete|done|abandon/i;
+
+/** The book in progress (the last one that is not finished), if any. */
+export function currentBook(facts: UsageInput['facts'] | null | undefined): { title: string; chapter?: number } | undefined {
+  const books = (Array.isArray(facts?.books) ? facts.books : [])
+    .filter(b => b && typeof b.title === 'string' && b.title.trim() && !FINISHED_STAGE.test(String(b.stage || '')));
+  const book = books[books.length - 1];
+  if (!book) return undefined;
+  const out: { title: string; chapter?: number } = { title: book.title.replace(/\s+/g, ' ').trim().slice(0, 60) };
+  if (Number.isFinite(book.chapter)) out.chapter = Number(book.chapter);
+  return out;
+}
 
 export function summarizeUsage(input: UsageInput, now: Date): UsageSummary {
   const end = now.getTime();
@@ -250,9 +296,7 @@ export function summarizeUsage(input: UsageInput, now: Date): UsageSummary {
   // ── Facts ──
   const firstName = (typeof input.facts?.name === 'string' ? input.facts.name : '')
     .trim().split(/\s+/)[0]?.replace(/[^\p{L}'-]/gu, '').slice(0, 30) || undefined;
-  const books = (Array.isArray(input.facts?.books) ? input.facts.books : [])
-    .filter(b => b && typeof b.title === 'string' && b.title.trim() && !FINISHED_STAGE.test(String(b.stage || '')));
-  const book = books[books.length - 1];
+  const book = currentBook(input.facts);
 
   const summary: UsageSummary = {
     windowDays: WINDOW_DAYS,
@@ -282,8 +326,8 @@ export function summarizeUsage(input: UsageInput, now: Date): UsageSummary {
   };
   if (firstName) summary.firstName = firstName;
   if (book) {
-    summary.bookTitle = book.title.replace(/\s+/g, ' ').trim().slice(0, 60);
-    if (Number.isFinite(book.chapter)) summary.bookChapter = Number(book.chapter);
+    summary.bookTitle = book.title;
+    if (book.chapter !== undefined) summary.bookChapter = book.chapter;
   }
   if (savedIdeas[0]) {
     summary.newestIdea = { id: savedIdeas[0].id, title: savedIdeas[0].title.replace(/\s+/g, ' ').trim().slice(0, 60) };
@@ -317,8 +361,41 @@ export function hourLabel(hour: number, minute = 0): string {
 const capitalize = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 const similar = (a: string, b: string) => !!a && !!b && (a === b || a.includes(b) || b.includes(a));
 
-/** The rules, in priority order. Every text is at most 220 characters. */
-export function candidateNotices(s: UsageSummary): NoticeCandidate[] {
+/** What the rules that offer a play (h, i) need to know. */
+export interface PlayRuleInput {
+  ctx: PlayContext;
+  /** Ids of plays the author has ever run, on demand or by accepting a notice. */
+  ranPlayIds: Set<string>;
+}
+
+export const playKey = (id: string): string => `play:${id}`;
+
+/** Turn a play into a notice. `text` defaults to "An idea: <blurb> Want me to?". */
+export function playCandidate(play: Play, ctx: PlayContext, text?: string): NoticeCandidate {
+  const r = renderPlay(play, ctx);
+  const wrap = (blurb: string) => `An idea: ${blurb} Want me to?`;
+  let line = text ?? wrap(r.blurb);
+  // A very long book title: fall back to the wording without it.
+  if (line.length > MAX_NOTICE_CHARS) line = wrap(renderPlay(play, { ...ctx, bookTitle: undefined }).blurb);
+  const a = r.action;
+  const action: NoticeAction = a.kind === 'task'
+    ? { label: r.label, kind: 'task', title: a.title, detail: a.detail }
+    : a.kind === 'schedule'
+      ? { label: r.label, kind: 'schedule', title: a.title, detail: a.detail, cron: a.cron }
+      : { label: r.label, kind: 'say', say: a.say };
+  const c: NoticeCandidate = { key: playKey(play.id), text: line, action };
+  const title = ctx.bookTitle?.replace(/\s+/g, ' ').trim();
+  if (title && line.includes(title)) c.sensitive = [title];
+  return c;
+}
+
+const findPlay = (id: string): Play | undefined => PLAYS.find(p => p.id === id);
+
+/**
+ * The rules, in priority order. Every text is at most 220 characters.
+ * Rules h and i offer a play and only run when `plays` is given.
+ */
+export function candidateNotices(s: UsageSummary, plays?: PlayRuleInput): NoticeCandidate[] {
   const out: NoticeCandidate[] = [];
 
   // a. Something the author keeps asking for, with no schedule for it yet.
@@ -388,9 +465,12 @@ export function candidateNotices(s: UsageSummary): NoticeCandidate[] {
 
   // e. A book in progress and no writing for a while.
   if (s.bookTitle && s.daysSinceLastWriting !== null && s.daysSinceLastWriting >= 4) {
+    const gap = s.daysSinceLastWriting <= MAX_STATED_DAYS
+      ? `It has been ${s.daysSinceLastWriting} days since you last wrote in ${s.bookTitle}.`
+      : `It has been a while since you wrote in ${s.bookTitle}.`;
     out.push({
       key: 'writing:back-in',
-      text: `It has been ${s.daysSinceLastWriting} days since you last wrote in ${s.bookTitle}. No pressure at all. Want a ten minute warm-up to ease back in?`,
+      text: `${gap} No pressure at all. Want a ten minute warm-up to ease back in?`,
       sensitive: [s.bookTitle],
       action: { label: 'Warm me up', kind: 'say', say: `Help me get back into ${s.bookTitle} with a ten minute warm-up.` },
     });
@@ -412,6 +492,27 @@ export function candidateNotices(s: UsageSummary): NoticeCandidate[] {
       text: 'You often work late. Before you stop for the night you can hand me a task, and I will have it ready for you by morning.',
       action: { label: 'Show me how', kind: 'say', say: 'What could I hand you before bed tonight?' },
     });
+  }
+
+  if (plays) {
+    const { ctx, ranPlayIds } = plays;
+
+    // h. A book, plenty of conversation, and no overview of the book yet.
+    const dashboard = findPlay('book-dashboard');
+    if (dashboard && s.bookTitle && s.messageCount >= 10
+      && !ranPlayIds.has('consistency-check') && !ranPlayIds.has('book-dashboard')
+      && availability(dashboard, ctx).available) {
+      out.push(playCandidate(dashboard, ctx,
+        `We have been talking about ${s.bookTitle} a lot lately. Want a one-page dashboard with your progress, cast, open threads and next three steps?`));
+    }
+
+    // i. Google is connected and has never been put to work.
+    const triage = findPlay('inbox-triage');
+    if (triage && ctx.hasGoogle && availability(triage, ctx).available
+      && !PLAYS.some(p => p.needs.includes('google') && ranPlayIds.has(p.id))) {
+      out.push(playCandidate(triage, ctx,
+        'Now that Google is connected, I can sum up your unread author mail from the last three days and draft replies for you to approve. Want me to?'));
+    }
   }
 
   return out;
@@ -459,7 +560,7 @@ export function acceptPolished(reply: unknown, sensitive: string[] = []): string
 
 // ── Service ──
 
-export type NoticeStatus = 'new' | 'accepted' | 'dismissed';
+export type NoticeStatus = 'new' | 'accepted' | 'dismissed' | 'expired';
 export interface Notice {
   id: string;
   key: string;
@@ -478,8 +579,35 @@ export interface PublicNotice {
 interface NoticeState {
   enabled: boolean;
   notices: Notice[];
+  /** key -> date it was dismissed (or expired unanswered). Quiet for 30 days. */
   dismissedKeys: Record<string, string>;
+  /** Dismissals in a row since the last accept. Drives the back-off. */
+  consecutiveDismissals: number;
+  /** When the last notice was created (ISO). */
+  lastGeneratedAt?: string;
+  /** play id -> when it was last run on demand (ISO). */
+  playRuns: Record<string, string>;
+  /** How many playbook ideas have been offered; rotates the categories. */
+  playSeq: number;
 }
+const emptyState = (): NoticeState => ({ enabled: true, notices: [], dismissedKeys: {}, consecutiveDismissals: 0, playRuns: {}, playSeq: 0 });
+
+/** One row of GET /api/playbook. Never carries the work order. */
+export interface PlaybookEntry {
+  id: string;
+  category: PlayCategory;
+  title: string;
+  blurb: string;
+  label: string;
+  kind: Play['action']['kind'];
+  available: boolean;
+  missing?: PlayNeed;
+}
+
+export type RunPlayResult =
+  | { ok: true; message?: string; say?: string; taskId?: string }
+  | { ok: false; reason: 'not_found' | 'exists' | 'failed' }
+  | { ok: false; reason: 'unavailable'; missing: PlayNeed };
 
 export interface NoticeDeps {
   /** Gathers the raw activity. Called only when notices are enabled. */
@@ -488,7 +616,15 @@ export interface NoticeDeps {
     add: (input: { title: string; detail?: string; kind?: 'task' | 'idea'; when?: 'tonight' | 'now'; source?: 'chat' | 'app' | 'schedule' }) => Promise<any>;
     get?: (id: string) => { title: string; detail?: string } | undefined;
   };
-  cron: { createJob: (input: { name: string; schedule: string; handler: string; payload?: Record<string, any> }) => Promise<any> };
+  cron: {
+    createJob: (input: { name: string; schedule: string; handler: string; payload?: Record<string, any> }) => Promise<any>;
+    /** Existing jobs, to avoid scheduling the same thing twice. */
+    list?: () => Array<{ name: string }>;
+  };
+  /** Which tools are ready right now. Omitted means neither. */
+  capabilities?: () => { hasGoogle: boolean; hasBrowser: boolean } | Promise<{ hasGoogle: boolean; hasBrowser: boolean }>;
+  /** Just the saved facts (name, books). Falls back to loadUsage().facts. */
+  loadFacts?: () => UsageInput['facts'] | Promise<UsageInput['facts']>;
   /** Cheapest model: (system, user) -> text. Omit to skip rewording. */
   polish?: (system: string, user: string) => Promise<string>;
 }
@@ -499,7 +635,9 @@ export type AcceptResult =
 export type DismissResult = { ok: true } | { ok: false; reason: 'not_found' | 'not_new' };
 
 const KINDS = ['schedule', 'task', 'say'];
-const STATUSES: NoticeStatus[] = ['new', 'accepted', 'dismissed'];
+const STATUSES: NoticeStatus[] = ['new', 'accepted', 'dismissed', 'expired'];
+const sameName = (a: unknown, b: unknown): boolean =>
+  typeof a === 'string' && typeof b === 'string' && a.trim().toLowerCase() === b.trim().toLowerCase();
 const str = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 
 function cleanAction(a: any): NoticeAction | undefined {
@@ -527,7 +665,7 @@ function cleanNotice(v: any): Notice | null {
 
 export class NoticeService {
   private file: string;
-  private state: NoticeState = { enabled: true, notices: [], dismissedKeys: {} };
+  private state: NoticeState = emptyState();
   private writeChain: Promise<void> = Promise.resolve();
   private generating = false;
 
@@ -536,7 +674,7 @@ export class NoticeService {
   }
 
   async initialize(): Promise<void> {
-    this.state = { enabled: true, notices: [], dismissedKeys: {} };
+    this.state = emptyState();
     if (!existsSync(this.file)) return;
     try {
       const parsed = JSON.parse(await readFile(this.file, 'utf-8'));
@@ -550,10 +688,19 @@ export class NoticeService {
           if (typeof v === 'string' && !Number.isNaN(Date.parse(v))) this.state.dismissedKeys[k] = v;
         }
       }
+      const count = (v: unknown) => (Number.isInteger(v) && (v as number) > 0 ? (v as number) : 0);
+      this.state.consecutiveDismissals = count(parsed.consecutiveDismissals);
+      this.state.playSeq = count(parsed.playSeq);
+      if (str(parsed.lastGeneratedAt) && !Number.isNaN(Date.parse(parsed.lastGeneratedAt))) this.state.lastGeneratedAt = parsed.lastGeneratedAt;
+      if (typeof parsed.playRuns === 'object' && parsed.playRuns !== null && !Array.isArray(parsed.playRuns)) {
+        for (const [k, v] of Object.entries(parsed.playRuns)) {
+          if (typeof v === 'string' && !Number.isNaN(Date.parse(v))) this.state.playRuns[k] = v;
+        }
+      }
     } catch (err) {
       logger.warn(`notices.json is corrupt, starting empty: ${(err as any)?.message || err}`);
       try { await copyFile(this.file, `${this.file}.corrupt-${Date.now()}`); } catch { /* best effort */ }
-      this.state = { enabled: true, notices: [], dismissedKeys: {} };
+      this.state = emptyState();
     }
   }
 
@@ -574,42 +721,19 @@ export class NoticeService {
 
   /**
    * The daily look. Creates at most one notice; returns it, or null when there
-   * is nothing to say. Never throws.
+   * is nothing to say or it is too soon. Never throws.
    */
   async generate(now: Date = new Date()): Promise<PublicNotice | null> {
     if (!this.state.enabled || this.generating) return null;
     this.generating = true;
     try {
-      if (this.state.notices.some(n => n.status === 'new')) return null;
       const t = now.getTime();
-      const latest = Math.max(0, ...this.state.notices.map(n => Date.parse(n.createdAt) || 0));
-      if (latest && t - latest < MIN_GAP_MS) return null;
-
-      const summary = summarizeUsage(await this.deps.loadUsage(), now);
-      const accepted = new Set(this.state.notices.filter(n => n.status === 'accepted').map(n => n.key));
-      const quiet = (key: string) => {
-        const at = Date.parse(this.state.dismissedKeys[key] || '');
-        return Number.isFinite(at) && t - at < DISMISS_QUIET_DAYS * DAY_MS;
-      };
-      const pick = candidateNotices(summary).find(c => !accepted.has(c.key) && !quiet(c.key));
-      if (!pick) return null;
-      // Settings may have changed while the activity was being read.
-      if (!this.state.enabled || this.state.notices.some(n => n.status === 'new')) return null;
-
-      const text = await this.polish(pick, summary.firstName);
-      if (!this.state.enabled) return null;
-      const notice: Notice = {
-        id: randomBytes(12).toString('hex'),
-        key: pick.key,
-        text,
-        status: 'new',
-        createdAt: now.toISOString(),
-      };
-      if (pick.action) notice.action = pick.action;
-      this.state.notices.push(notice);
-      this.prune(t);
-      await this.persist();
-      return toPublic(notice);
+      await this.expireOld(t);
+      if (this.state.notices.some(n => n.status === 'new')) return null;
+      if (isQuietHour(now)) return null; // waits for the next run
+      const last = this.lastGeneratedMs();
+      if (last && t - last < minGapMs(this.state.consecutiveDismissals)) return null;
+      return await this.create(now, false);
     } catch (err) {
       logger.debug('notice generation failed', err);
       return null;
@@ -618,13 +742,201 @@ export class NoticeService {
     }
   }
 
-  async accept(id: string): Promise<AcceptResult> {
+  /**
+   * The author asked for an idea. Ignores spacing and quiet hours (and the
+   * daily switch), but there is still only one `new` notice at a time: if one
+   * is waiting, that one is returned. Never throws.
+   */
+  async suggestNow(now: Date = new Date()): Promise<PublicNotice | null> {
+    const waiting = () => this.state.notices.find(n => n.status === 'new');
+    if (this.generating) { const n = waiting(); return n ? toPublic(n) : null; }
+    this.generating = true;
+    try {
+      await this.expireOld(now.getTime());
+      const existing = waiting();
+      if (existing) return toPublic(existing);
+      return await this.create(now, true);
+    } catch (err) {
+      logger.debug('notice suggestion failed', err);
+      return null;
+    } finally {
+      this.generating = false;
+    }
+  }
+
+  /** The playbook, rendered for the author's current book and tools, grouped by category. */
+  async playbook(): Promise<PlaybookEntry[]> {
+    const ctx = await this.playContext();
+    const out: PlaybookEntry[] = [];
+    for (const category of PLAY_CATEGORIES) {
+      for (const play of PLAYS) {
+        if (play.category !== category) continue;
+        const r = renderPlay(play, ctx);
+        const a = availability(play, ctx);
+        const entry: PlaybookEntry = { id: r.id, category: r.category, title: r.title, blurb: r.blurb, label: r.label, kind: r.action.kind, available: a.available };
+        if (a.missing) entry.missing = a.missing;
+        out.push(entry);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Do a play because the author asked. Remembers the run so the daily look
+   * does not suggest the same play for 14 days.
+   */
+  async runPlay(id: string, opts: { when?: 'tonight' | 'now' } = {}, now: Date = new Date()): Promise<RunPlayResult> {
+    const play = findPlay(id);
+    if (!play) return { ok: false, reason: 'not_found' };
+    try {
+      const ctx = await this.playContext();
+      const a = availability(play, ctx);
+      if (!a.available) return { ok: false, reason: 'unavailable', missing: a.missing! };
+      const action = renderPlay(play, ctx).action;
+      const out: { ok: true; message?: string; say?: string; taskId?: string } = { ok: true };
+      if (action.kind === 'task') {
+        const when = opts.when === 'tonight' ? 'tonight' : 'now';
+        const task = await this.deps.tasks.add({ title: action.title, detail: action.detail, kind: 'task', when, source: 'app' });
+        if (str(task?.id)) out.taskId = task.id;
+        out.message = when === 'tonight'
+          ? `Queued for tonight: "${action.title}".`
+          : `On it: "${action.title}". It will be in Tasks when it is ready.`;
+      } else if (action.kind === 'schedule') {
+        if ((await this.scheduleNames()).some(name => sameName(name, action.title))) return { ok: false, reason: 'exists' };
+        await this.deps.cron.createJob({ name: action.title, schedule: action.cron, handler: 'queue-task', payload: { title: action.title, detail: action.detail } });
+        out.message = `Scheduled "${action.title}".`;
+      } else {
+        out.say = action.say;
+      }
+      this.state.playRuns[play.id] = now.toISOString();
+      await this.persist();
+      return out;
+    } catch (err) {
+      logger.debug('play failed', err);
+      return { ok: false, reason: 'failed' };
+    }
+  }
+
+  // ── Choosing ──
+
+  /** Pick a suggestion, reword it, store it. The caller holds `generating`. */
+  private async create(now: Date, onDemand: boolean): Promise<PublicNotice | null> {
+    const t = now.getTime();
+    const usage = await this.deps.loadUsage();
+    const summary = summarizeUsage(usage, now);
+    const ctx: PlayContext = { ...(await this.capabilities()) };
+    if (summary.bookTitle) ctx.bookTitle = summary.bookTitle;
+    if (summary.bookChapter !== undefined) ctx.chapter = summary.bookChapter;
+
+    const accepted = new Set(this.state.notices.filter(n => n.status === 'accepted').map(n => n.key));
+    const quiet = (key: string) => {
+      const at = Date.parse(this.state.dismissedKeys[key] || '');
+      return Number.isFinite(at) && t - at < DISMISS_QUIET_DAYS * DAY_MS;
+    };
+    const ranPlayIds = new Set(Object.keys(this.state.playRuns));
+    for (const key of accepted) if (key.startsWith('play:')) ranPlayIds.add(key.slice(5));
+
+    // Plays that must not be suggested: answered before, run lately, or already on the schedule.
+    const names = (Array.isArray(usage?.schedules) ? usage.schedules : []).map(j => j?.name);
+    const excludeIds = new Set<string>();
+    for (const play of PLAYS) {
+      const key = playKey(play.id);
+      const ranAt = Date.parse(this.state.playRuns[play.id] || '');
+      const a = renderPlay(play, ctx).action;
+      if (accepted.has(key) || quiet(key)
+        || (Number.isFinite(ranAt) && t - ranAt < PLAY_RERUN_QUIET_DAYS * DAY_MS)
+        || (a.kind === 'schedule' && names.some(n => sameName(n, a.title)))) {
+        excludeIds.add(play.id);
+      }
+    }
+
+    let pick = candidateNotices(summary, { ctx, ranPlayIds })
+      .find(c => !accepted.has(c.key) && !quiet(c.key) && !(c.key.startsWith('play:') && excludeIds.has(c.key.slice(5))));
+    let fromPlaybook = false;
+    if (!pick) {
+      const lastPlay = [...this.state.notices].reverse().find(n => n.key.startsWith('play:'));
+      const avoidCategory = lastPlay ? findPlay(lastPlay.key.slice(5))?.category : undefined;
+      const play = pickPlay(PLAYS, ctx, { excludeIds, seed: this.state.playSeq, avoidCategory });
+      if (play) { pick = playCandidate(play, ctx); fromPlaybook = true; }
+    }
+    if (!pick) return null;
+    // Things may have changed while the activity was being read.
+    if (!onDemand && !this.state.enabled) return null;
+    if (this.state.notices.some(n => n.status === 'new')) return null;
+
+    const text = await this.polish(pick, summary.firstName);
+    if (!onDemand && !this.state.enabled) return null;
+    const notice: Notice = {
+      id: randomBytes(12).toString('hex'),
+      key: pick.key,
+      text,
+      status: 'new',
+      createdAt: now.toISOString(),
+    };
+    if (pick.action) notice.action = pick.action;
+    this.state.notices.push(notice);
+    this.state.lastGeneratedAt = notice.createdAt;
+    if (fromPlaybook) this.state.playSeq++;
+    this.prune(t);
+    await this.persist();
+    return toPublic(notice);
+  }
+
+  private lastGeneratedMs(): number {
+    const stored = Date.parse(this.state.lastGeneratedAt || '') || 0;
+    return Math.max(stored, ...this.state.notices.map(n => Date.parse(n.createdAt) || 0));
+  }
+
+  /** A notice nobody answered in 5 days steps aside. It is not a dismissal, but its key rests for 30 days. */
+  private async expireOld(nowMs: number): Promise<void> {
+    let changed = false;
+    for (const n of this.state.notices) {
+      if (n.status !== 'new' || nowMs - Date.parse(n.createdAt) <= EXPIRE_DAYS * DAY_MS) continue;
+      n.status = 'expired';
+      n.decidedAt = new Date(nowMs).toISOString();
+      this.state.dismissedKeys[n.key] = n.decidedAt.slice(0, 10);
+      changed = true;
+    }
+    if (changed) await this.persist();
+  }
+
+  private async capabilities(): Promise<{ hasGoogle: boolean; hasBrowser: boolean }> {
+    try {
+      const c = await this.deps.capabilities?.();
+      return { hasGoogle: c?.hasGoogle === true, hasBrowser: c?.hasBrowser === true };
+    } catch (err) {
+      logger.debug('notice capabilities failed', err);
+      return { hasGoogle: false, hasBrowser: false };
+    }
+  }
+
+  private async playContext(): Promise<PlayContext> {
+    const ctx: PlayContext = { ...(await this.capabilities()) };
+    try {
+      const facts = this.deps.loadFacts ? await this.deps.loadFacts() : (await this.deps.loadUsage()).facts;
+      const book = currentBook(facts);
+      if (book) {
+        ctx.bookTitle = book.title;
+        if (book.chapter !== undefined) ctx.chapter = book.chapter;
+      }
+    } catch (err) {
+      logger.debug('play context failed', err);
+    }
+    return ctx;
+  }
+
+  private async scheduleNames(): Promise<string[]> {
+    const jobs = this.deps.cron.list ? this.deps.cron.list() : (await this.deps.loadUsage()).schedules;
+    return (Array.isArray(jobs) ? jobs : []).map(j => j?.name).filter((n): n is string => typeof n === 'string');
+  }
+
+  async accept(id: string, now: Date = new Date()): Promise<AcceptResult> {
     const n = this.state.notices.find(x => x.id === id);
     if (!n) return { ok: false, reason: 'not_found' };
     if (n.status !== 'new') return { ok: false, reason: 'not_new' };
     // Claim it before the first await so a double click cannot run the action twice.
     n.status = 'accepted';
-    n.decidedAt = new Date().toISOString();
+    n.decidedAt = now.toISOString();
     const out: { ok: true; message?: string; say?: string } = { ok: true };
     try {
       const a = n.action;
@@ -646,18 +958,20 @@ export class NoticeService {
       delete n.decidedAt;
       return { ok: false, reason: 'failed' };
     }
+    this.state.consecutiveDismissals = 0;
     await this.persist();
     return out;
   }
 
-  async dismiss(id: string): Promise<DismissResult> {
+  async dismiss(id: string, now: Date = new Date()): Promise<DismissResult> {
     const n = this.state.notices.find(x => x.id === id);
     if (!n) return { ok: false, reason: 'not_found' };
     if (n.status !== 'new') return { ok: false, reason: 'not_new' };
-    const today = new Date().toISOString();
+    const today = now.toISOString();
     n.status = 'dismissed';
     n.decidedAt = today;
     this.state.dismissedKeys[n.key] = today.slice(0, 10);
+    this.state.consecutiveDismissals++;
     await this.persist();
     return { ok: true };
   }
@@ -680,7 +994,7 @@ export class NoticeService {
       if (nowMs - Date.parse(v) > DISMISS_QUIET_DAYS * 2 * DAY_MS) delete this.state.dismissedKeys[k];
     }
     while (this.state.notices.length > MAX_STORED) {
-      const i = this.state.notices.findIndex(n => n.status === 'dismissed');
+      const i = this.state.notices.findIndex(n => n.status === 'dismissed' || n.status === 'expired');
       if (i < 0) break;
       this.state.notices.splice(i, 1);
     }

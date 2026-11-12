@@ -46,6 +46,7 @@ import { registerReaderPanelRoutes } from './routes/reader-panel.js';
 import { registerTaskRoutes } from './routes/tasks.js';
 import { registerConnectorRoutes } from './routes/connectors.js';
 import { registerNoticeRoutes } from './routes/notices.js';
+import { registerPlaybookRoutes } from './routes/playbook.js';
 
 export function createAPIRoutes(app: Application, gateway: any, rootDir?: string): void {
   const ctx = createApiContext(app, gateway, rootDir);
@@ -79,4 +80,5 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   registerTaskRoutes(ctx);
   registerConnectorRoutes(ctx);
   registerNoticeRoutes(ctx);
+  registerPlaybookRoutes(ctx);
 }

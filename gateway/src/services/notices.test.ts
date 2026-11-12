@@ -371,12 +371,15 @@ describe('NoticeService', () => {
     expect(stored().notices[0]).toMatchObject({ key: 'repeat:tidy the timeline for chapter', status: 'new', createdAt: NOW.toISOString() });
   });
 
-  it('nothing to say means no notice and no model call', async () => {
+  // Changed with the playbook: an install with no activity used to get nothing; it now gets one idea.
+  it('with no usage rule to apply, one playbook idea is offered instead', async () => {
     usage = empty();
     const s = await make();
-    expect(await s.generate(NOW)).toBeNull();
-    expect(s.list()).toEqual([]);
-    expect(polishCalls).toEqual([]);
+    const n = await s.generate(NOW);
+    expect(n!.text).toMatch(/^An idea: .+ Want me to\?$/);
+    expect(s.list()).toEqual([n]);
+    expect(stored().notices[0].key).toMatch(/^play:/);
+    expect(polishCalls).toHaveLength(1);
   });
 
   it('the model sees only the masked suggestion and the first name, never the author\'s words', async () => {
@@ -464,8 +467,14 @@ describe('NoticeService', () => {
     file.dismissedKeys['review:waiting'] = NOW.toISOString().slice(0, 10);
     writeFileSync(join(dir, 'notices.json'), JSON.stringify(file));
     const later = await make();
-    expect(await later.generate(new Date(NOW.getTime() + 29 * DAY))).toBeNull();
-    expect(await later.generate(new Date(NOW.getTime() + 31 * DAY))).not.toBeNull();
+    // Changed with the playbook: while the key is quiet a playbook idea takes the slot (it used to be nothing).
+    const filler = await later.generate(new Date(NOW.getTime() + 29 * DAY));
+    expect(filler!.text).not.toContain('Tasks');
+    expect(stored().notices[1].key).toMatch(/^play:/);
+    await later.accept(filler!.id, new Date(NOW.getTime() + 29 * DAY));
+    const back = await later.generate(new Date(NOW.getTime() + 31 * DAY));
+    expect(back!.text).toContain('Tasks');
+    expect(stored().notices[2].key).toBe('review:waiting');
   });
 
   it('the next rule gets its turn when the first is dismissed', async () => {
@@ -484,9 +493,14 @@ describe('NoticeService', () => {
     const s = await make();
     const first = await s.generate(NOW);
     expect(await s.accept(first!.id)).toEqual({ ok: true });
-    expect(await s.generate(new Date(NOW.getTime() + 400 * DAY))).toBeNull();
+    // Changed with the playbook: later looks offer playbook ideas (they used to be null), never this key again.
+    const later = await s.generate(new Date(NOW.getTime() + 400 * DAY));
+    expect(later!.text).not.toContain('Tasks');
+    await s.accept(later!.id, new Date(NOW.getTime() + 400 * DAY));
     const again = await make();
-    expect(await again.generate(new Date(NOW.getTime() + 800 * DAY))).toBeNull();
+    const muchLater = await again.generate(new Date(NOW.getTime() + 800 * DAY));
+    expect(muchLater!.text).not.toContain('Tasks');
+    expect(stored().notices.filter((n: any) => n.key === 'review:waiting')).toHaveLength(1);
   });
 
   it('accept: schedule creates a queue-task cron job', async () => {
