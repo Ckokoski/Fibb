@@ -627,32 +627,32 @@ if [[ ! "$yn" =~ ^[Nn]$ ]]; then
     # Wait for server to become ready
     echo -e "  ${DIM}Waiting for server to start...${NC}"
     for i in $(seq 1 30); do
-        if curl -s http://localhost:3847/api/agent/status > /dev/null 2>&1; then
+        if curl -s -H "X-Fibb-Token: $(cat workspace/.config/session-token 2>/dev/null)" http://localhost:3847/api/agent/status > /dev/null 2>&1; then
             ok "Server is running (PID: $SERVER_PID)"
             break
         fi
         sleep 1
     done
     if [ -n "$GEMINI_KEY" ]; then
-        curl -s -X POST http://localhost:3847/api/vault \
+        curl -s -H "X-Fibb-Token: $(cat workspace/.config/session-token 2>/dev/null)" -X POST http://localhost:3847/api/vault \
           -H 'Content-Type: application/json' \
           -d "{\"key\":\"gemini_api_key\",\"value\":\"$GEMINI_KEY\"}" > /dev/null 2>&1
         ok "Gemini key stored in vault"
     fi
     if [ -n "$CLAUDE_KEY" ]; then
-        curl -s -X POST http://localhost:3847/api/vault \
+        curl -s -H "X-Fibb-Token: $(cat workspace/.config/session-token 2>/dev/null)" -X POST http://localhost:3847/api/vault \
           -H 'Content-Type: application/json' \
           -d "{\"key\":\"anthropic_api_key\",\"value\":\"$CLAUDE_KEY\"}" > /dev/null 2>&1
         ok "Claude key stored in vault"
     fi
     if [ -n "$OPENAI_KEY" ]; then
-        curl -s -X POST http://localhost:3847/api/vault \
+        curl -s -H "X-Fibb-Token: $(cat workspace/.config/session-token 2>/dev/null)" -X POST http://localhost:3847/api/vault \
           -H 'Content-Type: application/json' \
           -d "{\"key\":\"openai_api_key\",\"value\":\"$OPENAI_KEY\"}" > /dev/null 2>&1
         ok "OpenAI key stored in vault"
     fi
     if [ -n "$DEEPSEEK_KEY" ]; then
-        curl -s -X POST http://localhost:3847/api/vault \
+        curl -s -H "X-Fibb-Token: $(cat workspace/.config/session-token 2>/dev/null)" -X POST http://localhost:3847/api/vault \
           -H 'Content-Type: application/json' \
           -d "{\"key\":\"deepseek_api_key\",\"value\":\"$DEEPSEEK_KEY\"}" > /dev/null 2>&1
         ok "DeepSeek key stored in vault"
