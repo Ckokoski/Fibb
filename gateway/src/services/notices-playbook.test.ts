@@ -157,7 +157,7 @@ describe('playbook fallback', () => {
       await s.dismiss(n!.id, when);
       when = plus(HOUR, when);
     }
-    expect(cats.slice(0, 5)).toEqual(['Story', 'Research', 'Marketing', 'Routine', 'Story']);
+    expect(cats.slice(0, 6)).toEqual(['Story', 'Research', 'Marketing', 'Routine', 'Tools', 'Story']);
     for (let i = 1; i < cats.length; i++) expect(cats[i]).not.toBe(cats[i - 1]);
     expect(new Set(stored().notices.map((n: any) => n.key)).size).toBe(8);
   });

@@ -233,6 +233,8 @@ export const DEFAULT_RATE_RULES: RateRule[] = [
   { name: 'chat', max: 60, windowMs: 60_000, match: (m, p) => m === 'POST' && (p === '/api/chat' || p === '/api/chat/stream') },
   { name: 'mcp', max: 20, windowMs: 60_000, match: (m, p) => m !== 'GET' && (p === '/api/mcp' || p.startsWith('/api/mcp/')) },
   { name: 'browser', max: 30, windowMs: 60_000, match: (m, p) => m === 'POST' && p.startsWith('/api/browser/') },
+  // Each one is a model call that writes code.
+  { name: 'shelf', max: 10, windowMs: 60_000, match: (m, p) => m === 'POST' && (p === '/api/shelf' || p === '/api/shelf/') },
 ];
 
 /**

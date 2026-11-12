@@ -85,6 +85,7 @@ import { ConfirmationGateService } from './services/confirmation-gate.js';
 import { TaskStore } from './services/tasks.js';
 import { NightShift } from './services/night-shift.js';
 import { NoticeService } from './services/notices.js';
+import { ToolShelf } from './services/tool-shelf.js';
 import { ToolRegistry } from './services/tools/registry.js';
 import { ToolRunner } from './services/tools/runner.js';
 import { BrowserService } from './services/browser.js';
@@ -245,6 +246,8 @@ class FibbGateway {
   private set nightShift(v: NightShift) { this.services.nightShift = v; }
   private get notices(): NoticeService { return this.services.notices; }
   private set notices(v: NoticeService) { this.services.notices = v; }
+  private get toolShelf(): ToolShelf { return this.services.toolShelf; }
+  private set toolShelf(v: ToolShelf) { this.services.toolShelf = v; }
   private get toolRegistry(): ToolRegistry { return this.services.toolRegistry; }
   private set toolRegistry(v: ToolRegistry) { this.services.toolRegistry = v; }
   private get toolRunner(): ToolRunner { return this.services.toolRunner; }
@@ -699,6 +702,22 @@ class FibbGateway {
       },
     });
     await this.notices.initialize();
+
+    // ── Tool shelf: tiny helper tools Fibb writes; every one passes a static safety check ──
+    this.toolShelf = new ToolShelf(join(ROOT_DIR, 'workspace'), {
+      injection: this.injectionDetector,
+      complete: async (system, user) => {
+        // The best available model for careful code, else the cheapest one.
+        let provider: string | null = null;
+        try { provider = this.aiRouter.selectProvider('final_edit')?.id ?? null; } catch { provider = null; }
+        provider = provider || this.aiRouter.getCheapestAvailableProviderId();
+        if (!provider) throw new Error('no provider');
+        const r = await this.aiRouter.complete({
+          provider, system, messages: [{ role: 'user', content: user }], maxTokens: 6000, temperature: 0.2,
+        });
+        return r.text;
+      },
+    });
     const emitNotice = (n: unknown) => {
       if (!n) return;
       try { this.io?.emit('notice', n); } catch (err) { logger.debug('notice emit failed', err); }

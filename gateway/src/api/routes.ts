@@ -48,6 +48,7 @@ import { registerConnectorRoutes } from './routes/connectors.js';
 import { registerMcpRoutes } from './routes/mcp.js';
 import { registerNoticeRoutes } from './routes/notices.js';
 import { registerPlaybookRoutes } from './routes/playbook.js';
+import { registerShelfRoutes } from './routes/shelf.js';
 
 export function createAPIRoutes(app: Application, gateway: any, rootDir?: string): void {
   const ctx = createApiContext(app, gateway, rootDir);
@@ -83,4 +84,5 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   registerMcpRoutes(ctx);
   registerNoticeRoutes(ctx);
   registerPlaybookRoutes(ctx);
+  registerShelfRoutes(ctx);
 }

@@ -73,6 +73,7 @@ import { ConfirmationGateService } from './confirmation-gate.js';
 import { TaskStore } from './tasks.js';
 import { NightShift } from './night-shift.js';
 import { NoticeService } from './notices.js';
+import { ToolShelf } from './tool-shelf.js';
 import { ToolRegistry } from './tools/registry.js';
 import { ToolRunner } from './tools/runner.js';
 import { BrowserService } from './browser.js';
@@ -137,6 +138,7 @@ export interface GatewayServices {
   tasks: TaskStore;
   nightShift: NightShift;
   notices: NoticeService;
+  toolShelf: ToolShelf;
   toolRegistry: ToolRegistry;
   toolRunner: ToolRunner;
   browser: BrowserService;
@@ -214,6 +216,7 @@ export class ServiceContainer {
   tasks!: TaskStore;
   nightShift!: NightShift;
   notices!: NoticeService;
+  toolShelf!: ToolShelf;
   toolRegistry!: ToolRegistry;
   toolRunner!: ToolRunner;
   browser!: BrowserService;
@@ -279,6 +282,7 @@ export class ServiceContainer {
       tasks: this.tasks,
       nightShift: this.nightShift,
       notices: this.notices,
+      toolShelf: this.toolShelf,
       toolRegistry: this.toolRegistry,
       toolRunner: this.toolRunner,
       browser: this.browser,
