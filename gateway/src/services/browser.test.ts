@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { BrowserService, checkUrl, isBlockedIp, type LookupFn, type BrowserChannel } from './browser.js';
+import {
+  BrowserService, checkUrl, isBlockedIp, resolvePublicHost, isInlineScheme, playwrightLaunchOptions,
+  type LookupFn, type BrowserChannel, type BrowserLaunchOptions,
+} from './browser.js';
 
 // DNS is stubbed everywhere: no test touches the network or a real browser.
 const DNS: Record<string, string[]> = {
@@ -38,6 +41,12 @@ describe('checkUrl', () => {
     ['javascript:alert(1)', /Only http and https/],
     ['chrome://settings', /Only http and https/],
     ['about:blank', /Only http and https/],
+    ['about:config', /Only http and https/],
+    ['edge://settings/passwords', /Only http and https/],
+    ['data:text/html,<script>alert(1)</script>', /Only http and https/],
+    ['view-source:https://example.com/', /Only http and https/],
+    ['blob:https://example.com/1234', /Only http and https/],
+    ['FILE:///C:/Users/chris/secret.txt', /Only http and https/],
     ['https://user:pass@example.com/', /username or password/],
     ['https://user@example.com/', /username or password/],
     ['http://localhost:3847/api/vault', /private or local/],
@@ -98,22 +107,31 @@ describe('checkUrl', () => {
 });
 
 // ── A fake browser: pages are plain objects, navigation is a lookup table. ──
-interface FakeSite { title: string; text: string; links?: Array<{ text: string; href: string }>; redirect?: string; buttons?: Record<string, string>; fields?: Record<string, 'text' | 'password'> }
+interface FakeSite { title: string; text: string; links?: Array<{ text: string; href: string }>; redirect?: string; fail?: boolean; interruptOnce?: boolean; buttons?: Record<string, string>; fields?: Record<string, 'text' | 'password'> }
 
 function fakeBrowser(sites: Record<string, FakeSite>) {
-  const log = { launches: [] as Array<{ dir: string; channel: BrowserChannel; headless: boolean }>, closed: 0, clicks: 0, fills: [] as string[], routes: 0 };
+  const log = {
+    launches: [] as Array<{ dir: string; channel: BrowserChannel; headless: boolean }>, closed: 0, clicks: 0, fills: [] as string[], routes: 0,
+    proxies: [] as Array<string | undefined>, handler: null as null | ((route: any) => Promise<unknown>), hang: false,
+  };
   let failChannels: BrowserChannel[] = [];
-  const launcher = async (dir: string, opts: { channel: BrowserChannel; headless: boolean }) => {
+  const launcher = async (dir: string, opts: BrowserLaunchOptions) => {
     if (failChannels.includes(opts.channel)) throw new Error(`no ${opts.channel}`);
-    log.launches.push({ dir, ...opts });
+    log.launches.push({ dir, channel: opts.channel, headless: opts.headless });
+    log.proxies.push(opts.proxyServer);
     let url = 'about:blank';
     let marked: { kind: 'click' | 'field'; key: string } | null = null;
     const site = () => sites[url];
     const page = {
-      goto: async (u: string) => { url = sites[u]?.redirect ?? u; },
+      goto: async (u: string) => {
+        if (sites[u]?.interruptOnce) { sites[u].interruptOnce = false; throw new Error(`page.goto: Navigation to "${u}" is interrupted by another navigation to "chrome-error://chromewebdata/"`); }
+        if (sites[u]?.fail) throw new Error(`page.goto: net::ERR_HTTP_RESPONSE_CODE_FAILURE at ${u} (redirect to http://127.0.0.1:3847/api/vault)`);
+        url = sites[u]?.redirect ?? u;
+      },
       url: () => url,
       title: async () => site()?.title ?? '',
       evaluate: async (expr: string) => {
+        if (log.hang) await new Promise(() => {}); // a page stuck in an endless script
         const arg = JSON.parse(expr.slice(expr.lastIndexOf('})(') + 3, -1));
         if ('maxText' in arg) return { text: (site()?.text ?? '').slice(0, arg.maxText), links: (site()?.links ?? []).slice(0, arg.maxLinks) };
         if ('max' in arg) return (site()?.text ?? '').toLowerCase().includes(arg.q.toLowerCase()) ? [site()!.text] : [];
@@ -141,7 +159,7 @@ function fakeBrowser(sites: Record<string, FakeSite>) {
       newPage: async () => page,
       close: async () => { log.closed++; },
       on: () => {},
-      route: async () => { log.routes++; },
+      route: async (_pattern: string, handler: (route: any) => Promise<unknown>) => { log.routes++; log.handler = handler; },
     };
   };
   return { launcher, log, fail: (c: BrowserChannel[]) => { failChannels = c; } };
@@ -309,5 +327,150 @@ describe('BrowserService', () => {
     await new Promise(r => setTimeout(r, 120));
     expect(quick.status().running).toBe(true);
     await quick.close();
+  });
+});
+
+describe('BrowserService hardening', () => {
+  /** Run the context-level request guard against one URL, as Playwright would. */
+  const routed = async (url: string) => {
+    let outcome = '';
+    await fb.log.handler!({
+      request: () => ({ url: () => url }),
+      continue: async () => { outcome = 'continue'; },
+      abort: async (reason: string) => { outcome = `abort:${reason}`; },
+    });
+    return outcome;
+  };
+
+  it('never launches without the egress proxy, and tells Playwright to send everything through it', async () => {
+    await toolMap().web_open.run({ url: 'https://example.com/' });
+    expect(fb.log.proxies).toHaveLength(1);
+    expect(fb.log.proxies[0]).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+
+    const opts = playwrightLaunchOptions({ channel: 'msedge', headless: true, proxyServer: fb.log.proxies[0] }) as any;
+    expect(opts.proxy).toEqual({ server: fb.log.proxies[0], bypass: '<-loopback>' }); // loopback is NOT exempt from the proxy
+    expect(opts.acceptDownloads).toBe(false);
+    expect(opts.permissions).toEqual([]);
+    expect(opts.args).toContain('--force-webrtc-ip-handling-policy=disable_non_proxied_udp');
+    expect(opts).toMatchObject({ channel: 'msedge', headless: true });
+  });
+
+  it('fails closed when the egress proxy cannot start: the browser is not launched', async () => {
+    for (const start of [async () => { throw new Error('EADDRINUSE'); }, async () => 'http://10.0.0.5:8080']) {
+      const b = new BrowserService({
+        workspaceDir: dir, launcher: fb.launcher, detect: () => 'msedge', lookup,
+        egressProxy: { start: start as any, stop: async () => {} },
+      });
+      await expect(b.tools()[0].run({ url: 'https://example.com/' })).rejects.toThrow(/could not start its browser safely/);
+      await expect(b.openForUser()).rejects.toThrow(/could not start its browser safely/);
+    }
+    expect(fb.log.launches).toHaveLength(0);
+  });
+
+  it('the proxy lives exactly as long as the browser', async () => {
+    const calls: string[] = [];
+    const b = new BrowserService({
+      workspaceDir: dir, launcher: fb.launcher, detect: () => 'msedge', lookup,
+      egressProxy: { start: async () => { calls.push('start'); return 'http://127.0.0.1:50000'; }, stop: async () => { calls.push('stop'); } },
+    });
+    await b.tools()[0].run({ url: 'https://example.com/' });
+    expect(calls).toEqual(['start']);
+    expect(fb.log.proxies).toEqual(['http://127.0.0.1:50000']);
+    await b.close();
+    expect(calls).toEqual(['start', 'stop']);
+  });
+
+  it('the egress decision resolves a host once and pins that address', async () => {
+    expect(await resolvePublicHost('example.com', lookup)).toEqual({ ok: true, address: '93.184.216.34' });
+    expect(await resolvePublicHost('EXAMPLE.com.', lookup)).toEqual({ ok: true, address: '93.184.216.34' });
+    expect(await resolvePublicHost('[2606:2800:220:1:248:1893:25c8:1946]', lookup)).toMatchObject({ ok: true });
+    for (const host of ['localhost', '127.0.0.1', '::1', '[::1]', '169.254.169.254', '10.0.0.5', 'evil.example.com', 'mixed.example.com', 'printer.local', 'nope.example', '']) {
+      expect((await resolvePublicHost(host, lookup)).ok, host).toBe(false);
+    }
+  });
+
+  it('page requests: only http(s) to public hosts and inline data are let through', async () => {
+    await toolMap().web_open.run({ url: 'https://example.com/' });
+    expect(fb.log.handler).toBeTypeOf('function');
+    for (const url of ['https://example.com/app.js', 'http://example.com:8080/x', 'data:image/png;base64,AAAA', 'blob:https://example.com/1-2-3', 'about:blank', 'about:srcdoc']) {
+      expect(await routed(url), url).toBe('continue');
+    }
+    for (const url of [
+      'file:///C:/Users/chris/.authorclaw/vault.key', 'file://localhost/etc/passwd', 'chrome://settings/', 'edge://settings/passwords',
+      'chrome-extension://abc/x.js', 'ftp://example.com/x', 'about:config', 'view-source:https://example.com/', 'javascript:alert(1)',
+      'http://localhost:3847/api/vault/keys', 'http://127.0.0.1:3847/api/approvals', 'http://[::1]:3847/', 'http://169.254.169.254/latest/meta-data/',
+      'https://evil.example.com/x', 'http://192.168.1.1/', 'https://user:pw@example.com/',
+    ]) {
+      expect(await routed(url), url).toBe('abort:blockedbyclient');
+    }
+    expect(isInlineScheme('data:text/plain,hi')).toBe(true);
+    expect(isInlineScheme('about:config')).toBe(false);
+    expect(isInlineScheme('file:///x')).toBe(false);
+  });
+
+  it('the tools and the author-facing open refuse every non-web scheme before launching', async () => {
+    const urls = [
+      'file:///C:/Windows/win.ini', 'chrome://version', 'edge://settings', 'about:config', 'about:blank#x',
+      'data:text/html,<h1>x</h1>', 'javascript:alert(1)', 'view-source:https://example.com/', 'ftp://example.com/',
+    ];
+    for (const url of urls) {
+      await expect(toolMap().web_open.run({ url }), url).rejects.toThrow(/Only http and https|not a valid/);
+      await expect(browser.openForUser(url), url).rejects.toThrow(/Only http and https|not a valid/);
+    }
+    expect(fb.log.launches).toHaveLength(0);
+  });
+
+  it('a page that hangs is cut off at the deadline and the browser is closed, then works again', async () => {
+    const b = new BrowserService({ workspaceDir: dir, launcher: fb.launcher, detect: () => 'msedge', lookup, opTimeoutMs: 60 });
+    const t = Object.fromEntries(b.tools().map(x => [x.name, x]));
+    fb.log.hang = true;
+    const started = Date.now();
+    await expect(t.web_open.run({ url: 'https://example.com/' })).rejects.toThrow(/took too long/);
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(b.status().running).toBe(false);
+    expect(fb.log.closed).toBe(1);
+    // The queue is not stuck behind the hung page.
+    fb.log.hang = false;
+    expect(await t.web_open.run({ url: 'https://example.com/' })).toContain('Example Domain');
+    await b.close();
+  });
+
+  it('a navigation the proxy cut off is a plain refusal: no internal address in the message, and the next open works', async () => {
+    const f = fakeBrowser({ ...SITES, 'https://example.com/bounce': { title: '', text: '', fail: true } });
+    const b = new BrowserService({ workspaceDir: dir, launcher: f.launcher, detect: () => 'msedge', lookup });
+    const t = Object.fromEntries(b.tools().map(x => [x.name, x]));
+    const err: Error = await t.web_open.run({ url: 'https://example.com/bounce' }).then(() => new Error('opened'), e => e);
+    expect(err.message).toMatch(/could not be opened/);
+    expect(err.message).not.toMatch(/127\.0\.0\.1|vault|ERR_/);
+    await expect(t.web_find.run({ text: 'x' })).rejects.toThrow(/No page is open/);
+    expect(() => t.web_click.bind!({ text: 'Go' })).toThrow(/No page is open/);
+    expect(await t.web_open.run({ url: 'https://example.com/' })).toContain('Example Domain');
+    await b.close();
+  });
+
+  it('retries once when a late error page interrupts the navigation', async () => {
+    const f = fakeBrowser({ 'https://example.com/': { title: 'Example Domain', text: 'hello', interruptOnce: true } });
+    const b = new BrowserService({ workspaceDir: dir, launcher: f.launcher, detect: () => 'msedge', lookup });
+    expect(await b.tools()[0].run({ url: 'https://example.com/' })).toContain('Example Domain');
+    await b.close();
+  });
+
+  it('page text, titles, links and find results are capped', async () => {
+    const big: Record<string, FakeSite> = {
+      'https://example.com/': {
+        title: 'T'.repeat(5000), text: 'word '.repeat(20_000),
+        links: Array.from({ length: 200 }, (_, i) => ({ text: `link ${i}`, href: `https://example.com/${i}` })),
+      },
+    };
+    const f = fakeBrowser(big);
+    const b = new BrowserService({ workspaceDir: dir, launcher: f.launcher, detect: () => 'msedge', lookup });
+    const t = Object.fromEntries(b.tools().map(x => [x.name, x]));
+    const out = await t.web_open.run({ url: 'https://example.com/' });
+    expect(out.length).toBeLessThanOrEqual(6000 + 800 + 25 * 400);
+    expect(out.match(/^- link /gm)!.length).toBe(25);
+    expect(out.split('\n')[0].length).toBeLessThanOrEqual(210);
+    const found = await t.web_find.run({ text: 'word' });
+    expect(found.length).toBeLessThanOrEqual(5 * 520);
+    await b.close();
   });
 });

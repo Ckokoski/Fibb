@@ -96,7 +96,7 @@ describe('pipeline tool loop', () => {
     expect(r.final).toBe('Your outline is in Drive.');
     expect(r.chunks.join('')).toBe('Your outline is in Drive.');
     expect(r.chunks.join('')).not.toContain('<tool>');
-    expect(d.calls.executed).toEqual([{ call: { name: 'drive_search', args: { query: 'outline' } }, ctx: { channel: 'webchat' } }]);
+    expect(d.calls.executed).toEqual([{ call: { name: 'drive_search', args: { query: 'outline' } }, ctx: { channel: 'webchat', turn: { calls: 1 } } }]);
 
     // System prompt carries the tool section and the "How you work" line.
     expect(d.calls.reqs[0].system).toContain('# Tools');

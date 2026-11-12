@@ -26,7 +26,7 @@ import { logger } from './logger.js';
 import { getRecommendedThinking, getOutputBudget } from '../ai/router.js';
 import type { DetectResult } from '../security/injection.js';
 import {
-  parseToolCall, looksLikeToolCall, renderToolPrompt, toolSummary, type Tool,
+  parseToolCall, looksLikeToolCall, renderToolPrompt, toolSummary, type Tool, type ToolTurnState,
 } from './tools/registry.js';
 
 /** Progress event emitted while the model uses a tool. */
@@ -405,7 +405,8 @@ export class MessagePipeline {
     if (turnTools.length > 0) {
       systemPrompt += '\n' + renderToolPrompt(turnTools);
     }
-    const toolState = { calls: 0 };
+    // One per turn; also records whether untrusted or flagged tool results were read.
+    const toolState: ToolTurnState = { calls: 0 };
 
     // ── Add to conversation history (skip for project engines + silent channels) ──
     // Project steps use their own context chain, not the chat history
@@ -601,7 +602,7 @@ export class MessagePipeline {
     onChunk: ((chunk: string) => void) | undefined,
     onTool: ((e: ToolEvent) => void) | undefined,
     channel: string,
-    state: { calls: number },
+    state: ToolTurnState,
   ) {
     const runner = this.deps.toolRunner;
     const messages = [...req.messages];
@@ -657,7 +658,7 @@ export class MessagePipeline {
         emit({ name: call.name, status: 'start', summary });
         let outcome: Awaited<ReturnType<typeof runner.execute>>;
         try {
-          outcome = await runner.execute(call, { channel });
+          outcome = await runner.execute(call, { channel, turn: state });
         } catch (err) {
           logger.debug('tool execution failed', err);
           outcome = { kind: 'error', text: `The tool "${call.name}" failed.` };

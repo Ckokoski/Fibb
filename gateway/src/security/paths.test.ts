@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { join, resolve, sep } from 'path';
-import { resolveWithin, safeResolveWithin, sanitizeSegment } from './paths.js';
+import { resolveWithin, safeResolveWithin, sanitizeSegment, contentDisposition } from './paths.js';
 
 describe('resolveWithin', () => {
   const base = resolve('C:\\workspace\\project');
@@ -197,5 +197,21 @@ describe('sanitizeSegment', () => {
     expect(sanitizeSegment(null)).toBe('file');
     // @ts-expect-error intentional bad input for runtime guard test
     expect(sanitizeSegment(undefined)).toBe('file');
+  });
+});
+
+describe('contentDisposition', () => {
+  it('keeps ordinary names', () => {
+    expect(contentDisposition('inline', 'chapter-01 (final).mp3')).toBe('inline; filename="chapter-01 (final).mp3"');
+    expect(contentDisposition('attachment', 'book.docx')).toBe('attachment; filename="book.docx"');
+  });
+  it('a name from a URL cannot close the quotes, add parameters or split the header', () => {
+    for (const name of ['a".mp3', 'x"; filename*=UTF-8\'\'evil.html', 'a\r\nSet-Cookie: x=1', 'a\\b/c.mp3', 'caf\u00e9.mp3', '%0d%0a.mp3']) {
+      const v = contentDisposition('inline', name);
+      expect(v).toMatch(/^inline; filename="[\x20-\x7e]*"$/);
+      expect(v.slice('inline; filename="'.length, -1)).not.toMatch(/["\\\/;%\r\n]/);
+    }
+    expect(contentDisposition('inline', '')).toBe('inline; filename="file"');
+    expect(contentDisposition('inline', 'x'.repeat(500)).length).toBeLessThan(180);
   });
 });

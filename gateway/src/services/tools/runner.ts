@@ -6,10 +6,23 @@
  *  - write tools NEVER run here. They create a confirmation-gate request and
  *    only run from the approval executor after the author approves.
  *  - every call is audited with the tool name and arg KEYS only.
+ *
+ * Prompt-injection rules (per turn, tracked in ToolTurnState):
+ *  - a result the injection scan flags marks the turn. On an unattended
+ *    channel (night shift) every write tool is then refused for the rest of
+ *    the turn: no approval request is created, and the refusal is audited.
+ *    On interactive channels the approval description is prefixed with a
+ *    caution so the author sees the request came after untrusted content.
+ *  - after any result from outside (web, email, ...) an approval description
+ *    is never shortened: it must show the exact recipient / title / site, or
+ *    the request is refused.
  */
 import type { ConfirmationGateService, ConfirmationRequest } from '../confirmation-gate.js';
 import { registerApprovalExecutor } from '../approval-executors.js';
-import { ToolRegistry, isToolAvailable, wrapToolResult, type Tool, type ToolCall } from './registry.js';
+import {
+  ToolRegistry, isToolAvailable, wrapToolResult, isUnattendedChannel,
+  type Tool, type ToolCall, type ToolTurnState,
+} from './registry.js';
 
 export type ToolOutcome =
   | { kind: 'result'; text: string }
@@ -28,6 +41,8 @@ export interface ToolRunnerDeps {
 const DEFAULT_TIMEOUT_MS = 30_000;
 const MAX_PENDING = 200;
 const OUTCOME_MAX_CHARS = 400;
+const DESCRIPTION_MAX_CHARS = 300;
+export const UNTRUSTED_CAUTION = 'CAUTION: this request came after reading untrusted content. ';
 
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -75,7 +90,7 @@ export class ToolRunner {
     } catch { /* auditing must never break a tool call */ }
   }
 
-  async execute(call: ToolCall, ctx: { channel: string }): Promise<ToolOutcome> {
+  async execute(call: ToolCall, ctx: { channel: string; turn?: ToolTurnState }): Promise<ToolOutcome> {
     const name = String(call?.name ?? '');
     const args = call?.args && typeof call.args === 'object' && !Array.isArray(call.args) ? call.args : {};
     // Arg KEYS only: values may be manuscript text, email bodies or secrets.
@@ -91,15 +106,31 @@ export class ToolRunner {
       return { kind: 'error', text: `The tool "${tool.name}" is not available right now (it may not be set up or connected). Tell the author, or answer without it.` };
     }
 
+    const turn = ctx.turn;
     if (tool.risk === 'write') {
-      return this.requestApproval(tool, args, base);
+      if (turn?.flagged && isUnattendedChannel(ctx.channel)) {
+        // Nobody is watching and something read this turn tried to give
+        // instructions: do not even queue a request.
+        this.audit('write-refused-unattended', { ...base, risk: 'write', reason: 'flagged tool result earlier in this turn' });
+        return {
+          kind: 'error',
+          text: `"${tool.name}" was refused: something read earlier in this task looked like an attempt to give instructions, and the author is not here to check. ` +
+            'Nothing was done or requested. Finish without it and tell the author what you wanted to do.',
+        };
+      }
+      return this.requestApproval(tool, args, base, turn);
     }
 
     try {
       const raw = String((await withTimeout(tool.run(args), this.deps.timeoutMs ?? DEFAULT_TIMEOUT_MS)) ?? '');
       let flagged = false;
       try { flagged = this.deps.injection.detect(raw).detected === true; } catch { flagged = false; }
+      if (turn) {
+        if (tool.source) turn.untrusted = true;
+        if (flagged) turn.flagged = true;
+      }
       this.audit('run', { ...base, risk: 'read', ok: true, flagged, resultLength: raw.length });
+      if (flagged) this.audit('injection-flagged', { ...base, source: tool.source ?? 'tool', unattended: isUnattendedChannel(ctx.channel) });
       return { kind: 'result', text: wrapToolResult(tool.name, raw, flagged) };
     } catch (err) {
       const msg = String((err as any)?.message || err).replace(/\s+/g, ' ').slice(0, 200);
@@ -112,12 +143,21 @@ export class ToolRunner {
     tool: Tool,
     args: Record<string, unknown>,
     base: Record<string, any>,
+    turn?: ToolTurnState,
   ): Promise<ToolOutcome> {
     let description: string;
     let stored: Record<string, unknown>;
+    const afterUntrusted = !!(turn?.untrusted || turn?.flagged);
     try {
-      description = (tool.describe?.(args) || `Run ${tool.name}`).replace(/\s+/g, ' ').trim().slice(0, 300);
+      description = (tool.describe?.(args) || `Run ${tool.name}`).replace(/\s+/g, ' ').trim();
       stored = tool.bind ? tool.bind(args) : args;
+      if (description.length > DESCRIPTION_MAX_CHARS) {
+        // After outside content the author must see the whole target
+        // (recipient, title, site) to spot data being sent somewhere odd.
+        if (afterUntrusted) throw new Error('the request is too long to show the author in full. Use a shorter title or fewer recipients.');
+        description = description.slice(0, DESCRIPTION_MAX_CHARS);
+      }
+      if (turn?.flagged) description = UNTRUSTED_CAUTION + description;
     } catch (err) {
       const msg = String((err as any)?.message || err).replace(/\s+/g, ' ').slice(0, 200);
       this.audit('approval-refused', base);
@@ -139,7 +179,7 @@ export class ToolRunner {
         if (oldest === undefined) break;
         this.pending.delete(oldest);
       }
-      this.audit('approval-requested', { ...base, risk: 'write', approvalId: req.id });
+      this.audit('approval-requested', { ...base, risk: 'write', approvalId: req.id, afterUntrusted, flagged: !!turn?.flagged });
       return { kind: 'needs-approval', id: req.id, description };
     } catch {
       // The gate refuses requests whose text claims to be pre-approved.
@@ -158,6 +198,10 @@ export class ToolRunner {
   async runApproved(req: ConfirmationRequest): Promise<string> {
     const name = String(req?.payload?.tool ?? req?.action ?? '');
     const base = { tool: name.slice(0, 60), approvalId: req.id };
+    if (req?.status !== 'approved') {
+      this.audit('approved-run', { ...base, ok: false, reason: 'not approved' });
+      throw new Error('This request has not been approved.');
+    }
     const tool = this.registry.get(name);
     if (!tool || tool.name !== req.action) {
       this.audit('approved-run', { ...base, ok: false, reason: 'unknown tool' });

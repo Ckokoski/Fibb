@@ -102,6 +102,11 @@ function parseRecipients(v: unknown): string[] {
   return list;
 }
 
+/** All recipients, in full, for the approval card. Falls back to the raw text when it does not parse. */
+function describeRecipients(v: unknown): string {
+  try { return parseRecipients(v).join(', '); } catch { return oneLine(v, 1000); }
+}
+
 /** RFC 2047 encode a header value when it is not plain ASCII. */
 function encodeHeader(value: string): string {
   return /^[\x20-\x7e]*$/.test(value) ? value : `=?UTF-8?B?${Buffer.from(value, 'utf8').toString('base64')}?=`;
@@ -532,13 +537,13 @@ export class GoogleService {
     const available = () => this.connected;
     return [
       {
-        name: 'drive_search', risk: 'read', available, summary: 'Searching your Drive…',
+        name: 'drive_search', risk: 'read', source: 'drive', available, summary: 'Searching your Drive…',
         description: 'Search the author\'s Google Drive by name and content.',
         args: '{"query": "words"}',
         run: (a) => this.driveSearch(str(a.query, 500)),
       },
       {
-        name: 'doc_read', risk: 'read', available, summary: 'Reading a document…',
+        name: 'doc_read', risk: 'read', source: 'drive', available, summary: 'Reading a document…',
         description: 'Read a Google Doc or text file from Drive by id.',
         args: '{"id": "file id"}',
         run: (a) => this.docRead(a.id),
@@ -547,7 +552,8 @@ export class GoogleService {
         name: 'doc_create', risk: 'write', available, summary: 'Creating a Google Doc…',
         description: 'Create a new Google Doc with a title and text.',
         args: '{"title": "...", "content": "..."}',
-        describe: (a) => `Create a Google Doc titled ${quote(a.title, 80)}`,
+        // The whole title is shown (never shortened) so the author sees exactly what is created.
+        describe: (a) => `Create a Google Doc titled ${quote(a.title, 200)}`,
         bind: (a) => {
           if (!oneLine(a.title, 200)) throw new GoogleError('The document needs a title.');
           return { title: a.title, content: typeof a.content === 'string' ? a.content : '' };
@@ -558,18 +564,18 @@ export class GoogleService {
         name: 'doc_append', risk: 'write', available, summary: 'Adding to a Google Doc…',
         description: 'Add text to the end of a Google Doc by id.',
         args: '{"id": "doc id", "text": "..."}',
-        describe: (a) => `Add ${typeof a.text === 'string' ? a.text.length : 0} characters to the end of a Google Doc (id ${oneLine(a.id, 12)}…)`,
+        describe: (a) => `Add ${typeof a.text === 'string' ? a.text.length : 0} characters to the end of a Google Doc (id ${oneLine(a.id, 200)})`,
         bind: (a) => ({ id: requireId(a.id), text: typeof a.text === 'string' ? a.text : '' }),
         run: (a) => this.docAppend(a.id, a.text),
       },
       {
-        name: 'gmail_search', risk: 'read', available, summary: 'Searching your email…',
+        name: 'gmail_search', risk: 'read', source: 'email', available, summary: 'Searching your email…',
         description: 'Search the author\'s Gmail (Gmail search syntax works).',
         args: '{"query": "words"}',
         run: (a) => this.gmailSearch(str(a.query, 500)),
       },
       {
-        name: 'gmail_read', risk: 'read', available, summary: 'Reading an email…',
+        name: 'gmail_read', risk: 'read', source: 'email', available, summary: 'Reading an email…',
         description: 'Read one email by id.',
         args: '{"id": "message id"}',
         run: (a) => this.gmailRead(a.id),
@@ -578,12 +584,13 @@ export class GoogleService {
         name: 'gmail_draft', risk: 'write', available, summary: 'Drafting an email…',
         description: 'Save an email DRAFT for the author to review and send themselves. Fibb cannot send email.',
         args: '{"to": "name@example.com", "subject": "...", "body": "..."}',
-        describe: (a) => `Save an email draft to ${oneLine(a.to, 100)} with subject ${quote(a.subject, 80)}`,
+        // Every recipient is shown in full, so a draft addressed to a stranger stands out.
+        describe: (a) => `Save an email draft to ${describeRecipients(a.to)} with subject ${quote(a.subject, 80)}`,
         bind: (a) => ({ to: parseRecipients(a.to).join(', '), subject: oneLine(a.subject, 250), body: typeof a.body === 'string' ? a.body : '' }),
         run: (a) => this.gmailDraft(a.to, a.subject, a.body),
       },
       {
-        name: 'calendar_upcoming', risk: 'read', available, summary: 'Checking your calendar…',
+        name: 'calendar_upcoming', risk: 'read', source: 'calendar', available, summary: 'Checking your calendar…',
         description: 'List upcoming events on the author\'s main calendar.',
         args: '{"days": 7}',
         run: (a) => this.calendarUpcoming(a.days),

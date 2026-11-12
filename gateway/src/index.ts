@@ -14,6 +14,10 @@ import { createServer } from 'http';
 import { Server as SocketIO } from 'socket.io';
 import cors from 'cors';
 import helmet from 'helmet';
+import {
+  createRequestGuard, createSocketGuard, createRateLimiter, guardOptionsFromEnv, isAllowedOrigin, type GuardOptions,
+} from './security/request-guard.js';
+import { createErrorScrubber, createErrorHandler } from './security/redact.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs/promises';
@@ -248,27 +252,58 @@ class FibbGateway {
   // in initialize() after all services are wired; handleMessage() delegates to
   // it. Reads services live through the ServiceContainer.
   private pipeline!: MessagePipeline;
+  private guardOptions!: GuardOptions;
 
   constructor() {
     this.app = express();
     this.server = createServer(this.app);
+    // Request guard (CSRF / cross-origin / DNS rebinding). The port is read
+    // lazily because config loads in initialize(). See security/request-guard.ts.
+    this.guardOptions = guardOptionsFromEnv(() => Number(this.services.config?.get('server.port', 3847)) || 3847);
+    const guardAudit = (category: string, action: string, data: Record<string, any>) => this.services.audit?.log(category, action, data);
+    const corsOrigin = (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) =>
+      cb(null, !!origin && isAllowedOrigin(origin, this.guardOptions));
+
     this.io = new SocketIO(this.server, {
-      cors: { origin: ['http://localhost:3847', 'http://127.0.0.1:3847'] },
+      // Never a wildcard: only Fibb's own origins, checked again in allowRequest.
+      cors: { origin: corsOrigin },
+      allowRequest: createSocketGuard(this.guardOptions, guardAudit),
     });
 
-    // Security middleware
-    this.app.use(helmet({
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          scriptSrc: ["'self'", "'unsafe-inline'"],
-          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-          fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
-          connectSrc: ["'self'", "http://localhost:3847", "http://127.0.0.1:3847"],
-        },
-      },
-    }));
-    this.app.use(cors({ origin: ['http://localhost:3847', 'http://127.0.0.1:3847'] }));
+    // Security headers. The Fibb app has no inline scripts, so script-src is
+    // 'self' only. The legacy dashboard (served at /legacy, or at / when the
+    // app has not been built) still has an inline <script> and keeps
+    // 'unsafe-inline' for scripts on its own pages only.
+    const cspDirectives = (inlineScripts: boolean) => ({
+      defaultSrc: ["'self'"],
+      scriptSrc: inlineScripts ? ["'self'", "'unsafe-inline'"] : ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+      connectSrc: ["'self'", 'http://localhost:3847', 'http://127.0.0.1:3847'],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      frameAncestors: ["'none'"],
+    });
+    const helmetFor = (inlineScripts: boolean) => helmet({
+      contentSecurityPolicy: { directives: cspDirectives(inlineScripts) },
+      referrerPolicy: { policy: 'no-referrer' },
+      frameguard: { action: 'deny' },
+    });
+    const strictHeaders = helmetFor(false);
+    const legacyHeaders = helmetFor(true);
+    let appBuilt: boolean | null = null;
+    this.app.use((req, res, next) => {
+      if (appBuilt === null || appBuilt === false) appBuilt = existsSync(join(ROOT_DIR, 'app', 'dist', 'index.html'));
+      const legacy = !req.path.startsWith('/api/') && (!appBuilt || req.path === '/legacy' || req.path.startsWith('/legacy/'));
+      (legacy ? legacyHeaders : strictHeaders)(req, res, next);
+    });
+    this.app.disable('x-powered-by');
+    this.app.use(createRequestGuard(this.guardOptions, guardAudit));
+    // No credentials, no wildcard: foreign origins get no CORS headers at all.
+    this.app.use(cors({ origin: corsOrigin, credentials: false }));
+    this.app.use(createRateLimiter());
+    this.app.use(createErrorScrubber());
     this.app.use(express.json({ limit: '5mb' }));
   }
 
@@ -1114,13 +1149,9 @@ class FibbGateway {
       });
     });
 
-    // Global JSON error handler — ensures API errors never return HTML
-    this.app.use((err: any, _req: any, res: any, _next: any) => {
-      logger.error('Unhandled API error:', err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: String(err?.message || err || 'Internal server error') });
-      }
-    });
+    // Global JSON error handler: API errors never return HTML, a stack trace,
+    // a file path or the raw error text.
+    this.app.use(createErrorHandler((message, err) => logger.error(message, err)));
 
     // Log startup to activity log
     await this.activityLog.log({
@@ -1149,10 +1180,10 @@ class FibbGateway {
 
   private setupWebSocket(): void {
     this.io.on('connection', (socket) => {
+      // Defense in depth: allowRequest already refused foreign origins.
       const origin = socket.handshake.headers.origin;
-      const allowed = ['http://localhost:3847', 'http://127.0.0.1:3847'];
-      if (origin && !allowed.includes(origin)) {
-        this.audit.log('security', 'websocket_rejected', { origin });
+      if (origin && !isAllowedOrigin(origin, this.guardOptions)) {
+        this.audit.log('security', 'websocket_rejected', { origin: String(origin).slice(0, 120) });
         socket.disconnect();
         return;
       }
@@ -2404,6 +2435,8 @@ class FibbGateway {
   async start(): Promise<void> {
     await this.initialize();
     const port = this.config.get('server.port', 3847);
+    // Loopback only, always: there is no login, so the server must never be
+    // reachable from the network. (No override exists on purpose.)
     this.server.listen(port, '127.0.0.1', () => {
       // Bound to localhost only for security
     });

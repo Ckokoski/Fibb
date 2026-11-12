@@ -6,7 +6,7 @@ import { registerTaskRoutes } from './tasks.js';
 import { TaskStore } from '../../services/tasks.js';
 import { NightShift } from '../../services/night-shift.js';
 import { ConfirmationGateService } from '../../services/confirmation-gate.js';
-import { registerApprovalExecutor, clearApprovalExecutors } from '../../services/approval-executors.js';
+import { registerApprovalExecutor, clearApprovalExecutors, runApprovalExecutor } from '../../services/approval-executors.js';
 
 type Handler = (req: any, res: any) => any;
 
@@ -53,6 +53,14 @@ beforeEach(async () => {
 afterEach(() => { release(); clearApprovalExecutors(); rmSync(dir, { recursive: true, force: true }); });
 
 const settle = () => new Promise(r => setTimeout(r, 30));
+/** Wait for a condition instead of a fixed delay, so slow machines cannot fail the test. */
+const until = async (cond: () => boolean, ms = 5000) => {
+  const end = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > end) throw new Error('condition not met in time');
+    await new Promise(r => setTimeout(r, 5));
+  }
+};
 const newApproval = (service = 'email') => gate.createRequest({
   service, action: 'send', platform: 'Gmail', description: 'Send the newsletter',
   payload: { to: 'reader@example.com', body: 'private text' }, riskLevel: 'medium', isReversible: false,
@@ -83,7 +91,7 @@ describe('task routes', () => {
     await settle();
     expect(runs).toEqual([]);
     const r = await h.call('POST /api/tasks', { body: { title: 'Do it', when: 'now' } });
-    await settle();
+    await until(() => tasks.get(r.body.task.id)?.status === 'review');
     expect(runs).toHaveLength(1);
     expect(tasks.get(r.body.task.id)?.status).toBe('review');
     const brief = await h.call('GET /api/brief');
@@ -126,11 +134,10 @@ describe('task routes', () => {
     // Hold the model call so the second request sees a busy shift.
     nightShift.holdNext();
     expect((await h.call('POST /api/tasks/run')).body).toEqual({ started: 2, busy: false });
-    await settle();
+    await until(() => runs.length === 1);
     expect((await h.call('POST /api/tasks/run')).body).toEqual({ started: 0, busy: true });
     release();
-    await settle();
-    await settle();
+    await until(() => tasks.list().filter(t => t.status === 'review').length === 2 && !nightShift.isBusy());
     expect(tasks.list().filter(t => t.status === 'review')).toHaveLength(2);
     const brief = await h.call('GET /api/brief');
     expect(brief.body.items).toHaveLength(2);
@@ -175,6 +182,83 @@ describe('approval routes', () => {
     expect(r.code).toBe(500);
     expect(r.body).toEqual({ ok: false, error: 'smtp down' });
     expect(gate.get(a.id)).toMatchObject({ status: 'failed', outcome: { success: false, message: 'smtp down' } });
+  });
+
+  it('approval ids are unguessable: 128 random bits, no timestamp, never repeated', async () => {
+    const ids = new Set<string>();
+    for (let i = 0; i < 50; i++) ids.add((await newApproval()).id);
+    expect(ids.size).toBe(50);
+    for (const id of ids) expect(id).toMatch(/^conf-[0-9a-f]{32}$/);
+    expect([...ids].some(id => id.includes(String(Date.now()).slice(0, 8)))).toBe(false);
+  });
+
+  it('approving twice at the same moment runs the action exactly once', async () => {
+    let ran = 0;
+    let finish: () => void = () => {};
+    registerApprovalExecutor('email', async () => { ran++; await new Promise<void>(r => { finish = r; }); return 'Sent'; });
+    const a = await newApproval();
+    const first = h.call('POST /api/approvals/:id/approve', { params: { id: a.id } });
+    const second = h.call('POST /api/approvals/:id/approve', { params: { id: a.id } });
+    const third = h.call('POST /api/approvals/:id/approve', { params: { id: a.id } });
+    await until(() => ran >= 1);
+    finish();
+    const codes = (await Promise.all([first, second, third])).map(r => r.code).sort();
+    expect(codes).toEqual([200, 409, 409]);
+    expect(ran).toBe(1);
+    // And again after it completed.
+    expect((await h.call('POST /api/approvals/:id/approve', { params: { id: a.id } })).code).toBe(409);
+    expect(ran).toBe(1);
+    expect(gate.get(a.id)?.status).toBe('completed');
+  });
+
+  it('an expired request can never be approved or run, and leaves the pending list', async () => {
+    let ran = 0;
+    registerApprovalExecutor('email', async () => { ran++; return 'x'; });
+    const expiring = new ConfirmationGateService(dir, -1); // already past its expiry when created
+    await expiring.initialize();
+    const hx = harness({ tasks, nightShift, confirmationGate: expiring });
+    const a = await expiring.createRequest({
+      service: 'email', action: 'send', platform: 'Gmail', description: 'Send it',
+      payload: { to: 'reader@example.com' }, riskLevel: 'medium', isReversible: false,
+    });
+    expect((await hx.call('GET /api/approvals')).body.approvals).toEqual([]);
+    expect((await hx.call('POST /api/approvals/:id/approve', { params: { id: a.id } })).code).toBe(409);
+    await expect(expiring.approve(a.id)).rejects.toThrow(/expired/);
+    expect(expiring.get(a.id)?.status).toBe('expired');
+    expect(ran).toBe(0);
+  });
+
+  it('the executor refuses anything that is not approved, and never runs one request twice', async () => {
+    let ran = 0;
+    registerApprovalExecutor('email', async () => { ran++; return 'x'; });
+    const pending = await newApproval();
+    await expect(runApprovalExecutor(gate.get(pending.id)!, gate)).rejects.toThrow(/cannot run/);
+    const rejected = await newApproval();
+    await gate.reject(rejected.id, 'user');
+    await expect(runApprovalExecutor(gate.get(rejected.id)!, gate)).rejects.toThrow(/cannot run/);
+    // A forged "approved" copy of a rejected request does not change the gate's own record.
+    expect(gate.get(rejected.id)?.status).toBe('rejected');
+    const ok = (await gate.approve((await newApproval()).id))!;
+    await runApprovalExecutor(ok);            // no gate: status stays 'approved'
+    await expect(runApprovalExecutor(ok)).rejects.toThrow(/already been carried out/);
+    expect(ran).toBe(1);
+  });
+
+  it('no approval route ever returns the payload', async () => {
+    registerApprovalExecutor('email', async () => 'Sent');
+    const a = await newApproval();
+    const b = await newApproval();
+    const bodies = [
+      await h.call('GET /api/approvals'),
+      await h.call('POST /api/approvals/:id/approve', { params: { id: a.id } }),
+      await h.call('POST /api/approvals/:id/reject', { params: { id: b.id }, body: { reason: 'no' } }),
+      await h.call('POST /api/approvals/:id/approve', { params: { id: b.id } }),
+    ].map(r => JSON.stringify(r.body));
+    for (const body of bodies) {
+      expect(body).not.toContain('private text');
+      expect(body).not.toContain('reader@example.com');
+      expect(body).not.toContain('payload');
+    }
   });
 
   it('reject: ok, never runs the executor; unknown ids are 404', async () => {

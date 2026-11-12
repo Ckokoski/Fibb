@@ -11,9 +11,20 @@
  * Safety:
  *  - every URL passes checkUrl (http/https only, no credentials, no
  *    loopback/private/link-local/CGNAT/metadata targets, DNS-resolved);
- *  - requests made by pages are filtered through the same guard;
+ *  - every connection the browser makes (navigations, each redirect hop,
+ *    subresources, service workers, WebSockets, downloads) goes through a
+ *    local egress proxy (security/egress-proxy.ts) that applies the same guard
+ *    and connects to the address it just checked, so neither a redirect nor a
+ *    DNS answer that changes after the check can reach the local machine or
+ *    network. The browser is never launched without it;
+ *  - requests made by pages are also filtered through the guard in the
+ *    browser, and only http(s), data: and blob: are let through (no file:,
+ *    chrome:, edge:, ftp: ...);
+ *  - downloads are off and no site permission (location, camera, microphone,
+ *    notifications, clipboard ...) is ever granted;
  *  - the final URL is re-checked after navigation and content from a blocked
  *    destination is never returned;
+ *  - every tool operation has a deadline; a page that hangs is closed;
  *  - web_click / web_type are write tools (author approval), are bound to the
  *    page they were requested on, and web_type never fills password fields or
  *    submits a form.
@@ -25,6 +36,7 @@ import { isIP } from 'net';
 import { promises as dnsPromises } from 'dns';
 import { logger } from './logger.js';
 import type { Tool } from './tools/registry.js';
+import { EgressProxy } from '../security/egress-proxy.js';
 
 // ───────────────────────── URL guard ─────────────────────────
 
@@ -123,8 +135,27 @@ export async function checkUrl(url: string, lookup: LookupFn = defaultLookup): P
   host = host.replace(/\.+$/, '');
   if (!host) return { ok: false, reason: 'That is not a valid web address.' };
 
+  const r = await resolvePublicHost(host, lookup);
+  return r.ok ? { ok: true } : { ok: false, reason: r.reason };
+}
+
+/**
+ * Resolve a hostname (or IP literal) and decide whether Fibb's browser may
+ * connect to it. On success returns the address to connect to: callers that
+ * open the connection themselves (the egress proxy) must use that address,
+ * not the name, so a second DNS answer cannot differ from the checked one.
+ * Refused when ANY resolved address is loopback/private/link-local/reserved.
+ */
+export async function resolvePublicHost(
+  hostname: string,
+  lookup: LookupFn = defaultLookup,
+): Promise<{ ok: true; address: string } | { ok: false; reason: string }> {
+  let host = String(hostname ?? '').toLowerCase();
+  if (host.startsWith('[') && host.endsWith(']')) host = host.slice(1, -1);
+  host = host.replace(/\.+$/, '');
+  if (!host) return { ok: false, reason: 'That is not a valid web address.' };
   if (isIP(host)) {
-    return isBlockedIp(host) ? { ok: false, reason: NOT_ALLOWED } : { ok: true };
+    return isBlockedIp(host) ? { ok: false, reason: NOT_ALLOWED } : { ok: true, address: host };
   }
   if (
     host === 'localhost' || host.endsWith('.localhost') ||
@@ -146,7 +177,12 @@ export async function checkUrl(url: string, lookup: LookupFn = defaultLookup): P
       return { ok: false, reason: NOT_ALLOWED };
     }
   }
-  return { ok: true };
+  return { ok: true, address: addrs[0].address };
+}
+
+/** Schemes a page may load besides http(s): inline data only. */
+export function isInlineScheme(url: string): boolean {
+  return /^(data|blob):/i.test(url) || /^about:(blank|srcdoc)$/i.test(url);
 }
 
 // ───────────────────────── Browser plumbing ─────────────────────────
@@ -174,7 +210,19 @@ export interface ContextLike {
 }
 
 export type BrowserChannel = 'msedge' | 'chrome';
-export type BrowserLauncher = (userDataDir: string, opts: { channel: BrowserChannel; headless: boolean }) => Promise<ContextLike>;
+export interface BrowserLaunchOptions {
+  channel: BrowserChannel;
+  headless: boolean;
+  /** The egress proxy every connection must go through, e.g. "http://127.0.0.1:50123". */
+  proxyServer?: string;
+}
+export type BrowserLauncher = (userDataDir: string, opts: BrowserLaunchOptions) => Promise<ContextLike>;
+
+/** The egress proxy as BrowserService uses it (fakeable in tests). */
+export interface EgressProxyLike {
+  start(): Promise<string>;
+  stop(): Promise<void>;
+}
 
 export interface BrowserStatus {
   available: boolean;
@@ -185,6 +233,8 @@ export interface BrowserStatus {
 
 const CHANNELS: BrowserChannel[] = ['msedge', 'chrome'];
 const NAV_TIMEOUT_MS = 20_000;
+/** Hard deadline for one tool operation (below the tool runner's 30 s). */
+const OP_TIMEOUT_MS = 25_000;
 const IDLE_MS = 5 * 60 * 1000;
 const PAGE_TEXT_MAX = 6000;
 const MAX_LINKS = 25;
@@ -194,8 +244,27 @@ const TARGET = '[data-fibb-target="1"]';
 const defaultLauncher: BrowserLauncher = async (userDataDir, opts) => {
   const mod: any = await import('playwright-core');
   const chromium = mod.chromium ?? mod.default?.chromium;
-  return chromium.launchPersistentContext(userDataDir, { channel: opts.channel, headless: opts.headless }) as Promise<ContextLike>;
+  return chromium.launchPersistentContext(userDataDir, playwrightLaunchOptions(opts)) as Promise<ContextLike>;
 };
+
+/** The exact options handed to Playwright (exported so tests can pin them). */
+export function playwrightLaunchOptions(opts: BrowserLaunchOptions): Record<string, unknown> {
+  return {
+    channel: opts.channel,
+    headless: opts.headless,
+    // Nothing is ever saved to disk by a page, and no site permission
+    // (geolocation, camera, microphone, notifications, clipboard ...) is granted.
+    acceptDownloads: false,
+    permissions: [],
+    // All traffic, loopback included, goes through the egress proxy.
+    ...(opts.proxyServer ? { proxy: { server: opts.proxyServer, bypass: '<-loopback>' } } : {}),
+    args: [
+      // WebRTC must not open UDP paths around the proxy.
+      '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
+      '--disable-quic',
+    ],
+  };
+}
 
 /** Cheap on-disk detection of an installed Edge / Chrome. */
 export function detectInstalledChannel(): BrowserChannel | null {
@@ -342,6 +411,10 @@ export interface BrowserServiceOptions {
   detect?: () => BrowserChannel | null;
   lookup?: LookupFn;
   idleMs?: number;
+  /** Deadline for one tool operation. Default 25 s. */
+  opTimeoutMs?: number;
+  /** Replace the egress proxy (tests). The browser never launches without one. */
+  egressProxy?: EgressProxyLike;
 }
 
 export class BrowserService {
@@ -350,6 +423,8 @@ export class BrowserService {
   private detect: () => BrowserChannel | null;
   private lookup: LookupFn | undefined;
   private idleMs: number;
+  private opTimeoutMs: number;
+  private proxy: EgressProxyLike;
 
   private ctx: ContextLike | null = null;
   private visible = false;
@@ -368,6 +443,37 @@ export class BrowserService {
     this.detect = opts.detect ?? detectInstalledChannel;
     this.lookup = opts.lookup;
     this.idleMs = opts.idleMs ?? IDLE_MS;
+    this.opTimeoutMs = opts.opTimeoutMs ?? OP_TIMEOUT_MS;
+    this.proxy = opts.egressProxy ?? new EgressProxy({
+      allow: async (hostname) => {
+        const r = await (this.lookup ? resolvePublicHost(hostname, this.lookup) : resolvePublicHost(hostname));
+        return r.ok ? r.address : null;
+      },
+      onBlocked: (hostname) => logger.debug(`browser egress blocked: ${hostname.slice(0, 100)}`),
+    });
+  }
+
+  /**
+   * Run one tool operation with a deadline. A page that hangs (endless
+   * script, stalled load) must not hold the browser forever: the context is
+   * closed, which also releases whatever the operation was waiting on.
+   */
+  private async bounded<T>(fn: () => Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('That page took too long, so Fibb stopped reading it.')), this.opTimeoutMs);
+      if (typeof (timer as any).unref === 'function') (timer as any).unref();
+    });
+    const work = fn();
+    work.catch(() => { /* reported through the race below */ });
+    try {
+      return await Promise.race([work, deadline]);
+    } catch (err) {
+      if (/took too long/.test(String((err as any)?.message))) await this.closeNow();
+      throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private check(url: string): Promise<UrlCheck> {
@@ -420,11 +526,20 @@ export class BrowserService {
 
   private async launch(headless: boolean): Promise<ContextLike> {
     await mkdir(this.profileDir, { recursive: true });
+    // Fail closed: no egress proxy, no browser.
+    let proxyServer: string;
+    try {
+      proxyServer = await this.proxy.start();
+      if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(proxyServer)) throw new Error('unexpected proxy address');
+    } catch (err) {
+      logger.debug('browser egress proxy failed to start', err);
+      throw new Error('Fibb could not start its browser safely.');
+    }
     const order = this.goodChannel ? [this.goodChannel, ...CHANNELS.filter(c => c !== this.goodChannel)] : CHANNELS;
     let ctx: ContextLike | null = null;
     for (const channel of order) {
       try {
-        ctx = await this.launcher(this.profileDir, { channel, headless });
+        ctx = await this.launcher(this.profileDir, { channel, headless, proxyServer });
         this.goodChannel = channel;
         this.launchError = null;
         break;
@@ -435,6 +550,7 @@ export class BrowserService {
     if (!ctx) {
       this.launchError = 'Fibb could not start Microsoft Edge or Google Chrome.';
       this.launchFailedAt = Date.now();
+      await this.proxy.stop().catch(() => {});
       throw new Error(this.launchError);
     }
     const opened = ctx;
@@ -445,6 +561,7 @@ export class BrowserService {
           this.visible = false;
           this.currentUrl = '';
           if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
+          this.proxy.stop().catch(() => {});
         }
       });
       // Filter every request a page makes through the URL guard, so a page
@@ -452,7 +569,10 @@ export class BrowserService {
       await opened.route?.('**/*', async (route: any) => {
         try {
           const target = String(route.request().url());
-          if (!/^https?:/i.test(target)) return await route.continue();
+          if (!/^https?:/i.test(target)) {
+            // Inline data is fine; file:, chrome:, edge:, ftp: and the rest are not.
+            return isInlineScheme(target) ? await route.continue() : await route.abort('blockedbyclient');
+          }
           return (await this.guardCached(target)) ? await route.continue() : await route.abort('blockedbyclient');
         } catch {
           try { await route.abort('blockedbyclient'); } catch { /* already handled */ }
@@ -461,6 +581,7 @@ export class BrowserService {
     } catch (err) {
       logger.debug('browser guard setup failed', err);
       try { await opened.close(); } catch { /* ignore */ }
+      await this.proxy.stop().catch(() => {});
       throw new Error('Fibb could not start its browser safely.');
     }
     this.ctx = opened;
@@ -556,6 +677,7 @@ export class BrowserService {
     if (ctx) {
       try { await ctx.close(); } catch (err) { logger.debug('browser close failed', err); }
     }
+    try { await this.proxy.stop(); } catch (err) { logger.debug('browser egress proxy stop failed', err); }
   }
 
   async close(): Promise<void> {
@@ -567,32 +689,49 @@ export class BrowserService {
   async open(url: string): Promise<string> {
     const r = await this.check(url);
     if (!r.ok) throw new Error(r.reason);
-    return this.exclusive(async () => {
+    return this.exclusive(() => this.bounded(async () => {
       const page = await this.page();
       try {
-        await page.goto(url, { timeout: NAV_TIMEOUT_MS, waitUntil: 'domcontentloaded' });
+        for (let attempt = 1; ; attempt++) {
+          try {
+            await page.goto(url, { timeout: NAV_TIMEOUT_MS, waitUntil: 'domcontentloaded' });
+            break;
+          } catch (err) {
+            // The error page of an earlier refused navigation can land late and
+            // interrupt this one; that is worth one more try.
+            if (attempt === 1 && /interrupted by another navigation/i.test(String((err as any)?.message))) {
+              await new Promise(r => setTimeout(r, 250));
+              continue;
+            }
+            // Typically a blocked redirect or an unreachable site. Do not pass
+            // on the browser's own error text, which names internal addresses.
+            logger.debug('browser navigation failed', err);
+            this.currentUrl = '';
+            throw new Error('That page could not be opened. It may be offline, or it led somewhere Fibb is not allowed to go.');
+          }
+        }
         return await this.snapshot(page, PAGE_TEXT_MAX, true);
       } finally {
         this.touch();
       }
-    });
+    }));
   }
 
   async find(text: string): Promise<string> {
     const q = text.replace(/\s+/g, ' ').trim().slice(0, 200);
     if (!q) throw new Error('Say what text to look for.');
-    return this.exclusive(async () => {
+    return this.exclusive(() => this.bounded(async () => {
       const page = this.livePage();
       if (!page) throw new Error('No page is open. Use web_open first.');
       try {
         await this.assertAllowedPage(page);
         const hits: string[] = (await page.evaluate(js(FIND_JS, { q, max: 5 }))) || [];
         if (!Array.isArray(hits) || hits.length === 0) return `"${q}" does not appear on this page.`;
-        return hits.map((h, i) => `${i + 1}. …${str(h, 500)}…`).join('\n');
+        return hits.slice(0, 5).map((h, i) => `${i + 1}. …${str(h, 500)}…`).join('\n');
       } finally {
         this.touch();
       }
-    });
+    }));
   }
 
   /** Return to the page an approved action was requested on. */
@@ -615,7 +754,7 @@ export class BrowserService {
   async click(text: string, boundUrl = ''): Promise<string> {
     const q = text.replace(/\s+/g, ' ').trim().slice(0, 200);
     if (!q) throw new Error('Say what to click.');
-    return this.exclusive(async () => {
+    return this.exclusive(() => this.bounded(async () => {
       try {
         const page = await this.pageFor(boundUrl);
         const hit = await page.evaluate(js(MARK_CLICK_JS, { q }));
@@ -627,14 +766,14 @@ export class BrowserService {
       } finally {
         this.touch();
       }
-    });
+    }));
   }
 
   async type(field: string, text: string, boundUrl = ''): Promise<string> {
     const q = field.replace(/\s+/g, ' ').trim().slice(0, 100);
     if (!q) throw new Error('Say which field to type into.');
     if (text.length > TYPE_MAX) throw new Error(`That is too much text to type at once (max ${TYPE_MAX} characters).`);
-    return this.exclusive(async () => {
+    return this.exclusive(() => this.bounded(async () => {
       try {
         const page = await this.pageFor(boundUrl);
         const hit = await page.evaluate(js(MARK_FIELD_JS, { q }));
@@ -645,7 +784,7 @@ export class BrowserService {
       } finally {
         this.touch();
       }
-    });
+    }));
   }
 
   /** The four browser tools. */
@@ -661,6 +800,7 @@ export class BrowserService {
         description: 'Open a web page in Fibb\'s browser and read its title, text and links.',
         args: '{"url": "https://..."}',
         risk: 'read',
+        source: 'web',
         summary: 'Reading a web page…',
         available,
         run: async (a) => this.open(str(a.url, 2000)),
@@ -670,6 +810,7 @@ export class BrowserService {
         description: 'Find passages containing some text on the page that is currently open.',
         args: '{"text": "words to find"}',
         risk: 'read',
+        source: 'web',
         summary: 'Looking through the page…',
         available,
         run: async (a) => this.find(str(a.text, 500)),
