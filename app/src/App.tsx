@@ -133,11 +133,13 @@ export function App() {
           <span className="pill" title="Fibb is in beta; expect rough edges">Beta</span>
           <div className="right">
             {streak > 0 && <button className="streak-chip" onClick={() => setTonight(true)} title="Open Tonight">🔥 <b>{streak}</b> day streak</button>}
+            <div className="toolbar" role="toolbar" aria-label="Quick controls">
             <IconButton label="Quick command (Ctrl+K)" onClick={() => setCmd(true)}>{Icons.command}</IconButton>
             <IconButton label="Read aloud" pressed={voice.readAloud} on={voice.readAloud} onClick={() => setVoice(v => ({ ...v, readAloud: !v.readAloud }))}>{Icons.speaker}</IconButton>
             {micAvailable && <IconButton label="Hands-free" pressed={voice.handsFree} on={voice.handsFree} onClick={() => setVoice(v => ({ ...v, handsFree: !v.handsFree }))}>{Icons.wave}</IconButton>}
             <IconButton label="Tonight" pressed={tonight} on={tonight} onClick={() => setTonight(t => !t)}>{Icons.moon}</IconButton>
             <IconButton label={`Theme: ${theme === 'dark' ? 'Dark' : theme === 'light' ? 'Light' : 'Auto'}`} onClick={() => setTheme(t => cycleTheme(t))}>{themeIcon}</IconButton>
+            </div>
           </div>
         </header>
         <main className={`main${view === 'chat' && welcome ? ' is-welcome' : ''}`}>

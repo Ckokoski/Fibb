@@ -297,6 +297,42 @@ input[type="checkbox"]:checked { background: var(--accent); }
 input[type="checkbox"]:checked::after { transform: translateX(18px); }
 input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+.notice { width: 100%; margin-top: 12px; padding: 16px 18px; border-radius: 24px; background: linear-gradient(135deg, var(--accent-dim), transparent 70%), var(--card); border: 1px solid var(--line); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); animation: rise .7s var(--ease) .3s backwards; text-align: left; }
+.notice-k { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.notice-t { margin-top: 4px; font-size: 15px; line-height: 1.5; }
+.notice .act { margin-top: 12px; display: flex; gap: 8px; }
+.voicerow > .s { flex: 1; min-width: 0; }
+label.voicerow { flex-wrap: nowrap; gap: 16px; }
+
+/* Icons and pills, second pass */
+.nav svg { width: 22px; height: 22px; }
+.nav.on { background: linear-gradient(145deg, var(--accent-2), var(--accent)); box-shadow: 0 8px 20px -4px var(--glow-1), inset 0 1px 0 rgba(255,255,255,.28); }
+.nav.on svg [fill-opacity] { fill-opacity: .28; }
+.toolbar { display: inline-flex; align-items: center; gap: 2px; padding: 4px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); box-shadow: 0 4px 18px -8px rgba(60,70,140,.25), inset 0 1px 0 rgba(255,255,255,.35); }
+.toolbar .ibtn { width: 36px; height: 36px; background: none; border: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.toolbar .ibtn:hover { background: var(--accent-dim); transform: none; }
+.toolbar .ibtn.on { background: var(--accent); color: var(--accent-ink); box-shadow: 0 4px 12px -2px var(--glow-1); }
+.ibtn svg { width: 20px; height: 20px; }
+.chip { display: inline-flex; align-items: center; gap: 7px; padding: 7px 14px 7px 10px; background: linear-gradient(180deg, var(--surface), var(--card)); box-shadow: 0 1px 2px rgba(60,70,140,.06), inset 0 1px 0 rgba(255,255,255,.5); }
+.chip svg { width: 16px; height: 16px; color: var(--accent); flex: 0 0 auto; }
+.chip:hover:not(:disabled) { color: var(--text); border-color: var(--accent-2); box-shadow: 0 8px 18px -8px var(--glow-1); }
+.chip:active:not(:disabled) { transform: scale(.97); }
+.pill { background: linear-gradient(135deg, var(--accent-dim), color-mix(in srgb, var(--peach) 22%, transparent)); box-shadow: inset 0 0 0 1px var(--line); }
+.streak-chip { box-shadow: 0 4px 18px -8px rgba(60,70,140,.25), inset 0 1px 0 rgba(255,255,255,.35); }
+.badge { padding: 3px 9px; }
+.keyhead .badge { color: var(--accent); background: var(--accent-dim); }
+.btn { box-shadow: inset 0 1px 0 rgba(255,255,255,.4); background: linear-gradient(180deg, var(--surface), var(--card)); }
+.btn.quiet { background: none; box-shadow: none; }
+.btn.pri { box-shadow: 0 8px 18px -6px var(--glow-1), inset 0 1px 0 rgba(255,255,255,.3); }
+.wcard .ic { width: 40px; height: 40px; border-radius: 14px; background: linear-gradient(145deg, var(--accent-dim), color-mix(in srgb, var(--peach) 26%, transparent)); box-shadow: inset 0 0 0 1px var(--line); }
+.wcard .ic svg { width: 21px; height: 21px; }
+.cbtn svg { width: 21px; height: 21px; }
+.cbtn.send { box-shadow: 0 8px 18px -4px var(--glow-1), inset 0 1px 0 rgba(255,255,255,.3); }
+.read svg { width: 16px; height: 16px; }
+:root[data-theme="dark"] .btn, :root[data-theme="dark"] .chip, :root[data-theme="dark"] .toolbar, :root[data-theme="dark"] .streak-chip { box-shadow: inset 0 1px 0 rgba(255,255,255,.06); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn, :root:not([data-theme="light"]) .chip, :root:not([data-theme="light"]) .toolbar, :root:not([data-theme="light"]) .streak-chip { box-shadow: inset 0 1px 0 rgba(255,255,255,.06); } }
+@media (max-width: 900px) { .toolbar .ibtn { width: 34px; height: 34px; } }
+
 /* Tonight drawer (desktop) */
 .drawer { position: fixed; top: 14px; right: 14px; bottom: 14px; width: 350px; max-width: 92vw; background: var(--surface); border: 1px solid var(--line); border-radius: 28px; box-shadow: var(--shadow); transform: translateX(calc(100% + 20px)); visibility: hidden; transition: transform .4s var(--ease), visibility 0s linear .4s; z-index: 21; padding: 22px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
 .drawer.open { transform: none; visibility: visible; transition: transform .4s var(--ease), visibility 0s; }

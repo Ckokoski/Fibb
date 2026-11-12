@@ -1,13 +1,10 @@
 import type { JSX } from 'react';
 import type { Facts, WritingStats } from '../lib/api';
-import type { Task } from '../lib/tasks';
+import { Ico } from './icons';
+import { useEffect, useState } from 'react';
+import { acceptNotice, dismissNotice, getNotices, type Notice, type Task } from '../lib/tasks';
 
-const ic = (d: JSX.Element) => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{d}</svg>;
-const pen = ic(<><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" /></>);
-const spark = ic(<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" />);
-const moon = ic(<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />);
-const book = ic(<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V2H6.5A2.5 2.5 0 0 0 4 4.5z" />);
-const help = ic(<><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 1-1 1.7M12 17h.01" /></>);
+const { pen, spark, moon, book, help } = Ico;
 
 interface WelcomeCard { icon: JSX.Element; title: string; hint: string; send?: string; tonight?: boolean }
 
@@ -19,6 +16,9 @@ export function Welcome({ facts, stats, review = [], onOpenTasks, hasHistory, di
   facts: Facts | null; stats: WritingStats; review?: Task[]; onOpenTasks?: () => void; hasHistory: boolean; disabled: boolean;
   onSend: (t: string) => void; onTonight: () => void; onEarlier: () => void;
 }) {
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [noticeNote, setNoticeNote] = useState('');
+  useEffect(() => { void getNotices().then(n => setNotice(n[0] ?? null)); }, []);
   const b = facts?.books?.[0];
   const name = facts?.name ? `, ${facts.name}` : '';
   const streak = Number(stats.currentStreakDays ?? 0);
@@ -71,6 +71,22 @@ export function Welcome({ facts, stats, review = [], onOpenTasks, hasHistory, di
           </button>
         ))}
       </div>
+      {notice && (
+        <div className="notice" role="group" aria-label="Fibb noticed something">
+          <div className="notice-k">I noticed</div>
+          <div className="notice-t">{noticeNote || notice.text}</div>
+          {!noticeNote && (
+            <div className="act">
+              {notice.action && <button className="btn pri" onClick={async () => {
+                const r = await acceptNotice(notice.id);
+                if (r.say) { setNotice(null); onSend(r.say); return; }
+                setNoticeNote(r.ok ? (r.message || 'Done. You can change it under Tasks.') : 'That did not work. Try again later.');
+              }}>{notice.action.label}</button>}
+              <button className="btn quiet" onClick={async () => { await dismissNotice(notice.id); setNotice(null); }}>Not now</button>
+            </div>
+          )}
+        </div>
+      )}
       {hasHistory && <button className="earlier" onClick={onEarlier}>Show our earlier conversation</button>}
     </div>
   );

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ConnectorsSection } from './ConnectorsSection';
 import { cue, setSounds, soundsOn } from '../lib/sound';
+import { getNoticeSettings, setNoticeSettings } from '../lib/tasks';
 import {
   deleteVaultKey, getModels, getVaultKeys, refreshProviders, saveVaultKey, setModel,
   type Companion,
@@ -68,6 +69,8 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
   const [error, setError] = useState('');
   const [tab, setTab] = useState<'connect' | 'voice' | 'look' | 'more'>('connect');
   const [sounds, setSoundsState] = useState(soundsOn);
+  const [notices, setNotices] = useState(true);
+  useEffect(() => { void getNoticeSettings().then(x => setNotices(x.enabled)); }, []);
 
   const reload = useCallback(() => {
     getVaultKeys().then(setKeys).catch(() => {});
@@ -141,6 +144,13 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
         <div className="t">Appearance</div>
         <div className="s">Fibb is always Fibb. Pick the look you like.</div>
         <LookPicker onPicked={onCompanionChanged} />
+      </section>
+
+      <section className="card">
+        <div className="t">Fibb notices how you work</div>
+        <label className="voicerow"><span className="s" style={{ margin: 0 }}>Fibb looks at what you do inside Fibb, such as when you write and what you ask for often, and now and then suggests a shortcut. It never watches anything outside Fibb. A short summary goes to your AI model to write the suggestion.</span>
+          <input type="checkbox" checked={notices} aria-label="Let Fibb suggest improvements" onChange={async e => { const v = e.target.checked; setNotices(v); await setNoticeSettings(v); }} />
+        </label>
       </section>
 
       <section className="card">

@@ -79,3 +79,11 @@ export function useWork(refreshKey = 0) {
   }, [reload, refreshKey]);
   return { tasks, approvals, reload };
 }
+
+// "I noticed": suggestions Fibb makes from how the author works inside Fibb.
+export interface Notice { id: string; text: string; action?: { label: string; kind: 'schedule' | 'task' | 'say' }; createdAt: string }
+export const getNotices = () => j<{ notices: Notice[] }>('/api/notices', undefined, { notices: [] }).then(r => r.notices || []);
+export const acceptNotice = (id: string) => j<{ ok: boolean; say?: string; message?: string }>(`/api/notices/${encodeURIComponent(id)}/accept`, post(), { ok: false });
+export const dismissNotice = (id: string) => j<{ ok: boolean }>(`/api/notices/${encodeURIComponent(id)}/dismiss`, post(), { ok: false });
+export const getNoticeSettings = () => j<{ enabled: boolean }>('/api/notices/settings', undefined, { enabled: true });
+export const setNoticeSettings = (enabled: boolean) => j<{ enabled: boolean }>('/api/notices/settings', post({ enabled }), { enabled });

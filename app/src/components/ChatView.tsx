@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
+import { Ico } from './icons';
 import { streamChat, speak, getWritingStats, type Facts, type WritingStats } from '../lib/api';
 import { startListening, stopPlayback, playUrl, micSupported, type Listener } from '../lib/voice';
 import { Message, type ChatMessage } from './Message';
@@ -11,6 +12,10 @@ import { groupTasks, type Approval, type Task } from '../lib/tasks';
 
 export interface ChatApi { say: (text: string) => void; readLast: () => void }
 
+const CHIP_ICON: Record<string, JSX.Element> = {
+  "I'm working on a novel": Ico.book, 'Help me find a premise': Ico.spark, 'What can you do?': Ico.help,
+  'Check the last chapter': Ico.chapter, "What's on tonight?": Ico.moon, 'Brainstorm a scene': Ico.spark, 'Read that back to me': Ico.speaker,
+};
 const STORE = 'fibb_chat_webchat';
 const GREETING = "Hi, I'm Fibb. I keep your book straight, draft when you ask, and work on it while you sleep. What's your name, and what are you working on?";
 // Cheap heuristic: a reply that sounds like praise or a streak milestone makes the hero celebrate for a moment.
@@ -155,8 +160,8 @@ export function ChatView({ apiRef, work, onOpenTasks, facts, onWelcome, onTurn, 
           </div>
         </div>
         <div className="chips">
-          <button className="chip tonight" onClick={onOpenTonight}>Tonight</button>
-          {chips.map(c => <button key={c} className="chip" onClick={() => onChip(c)} disabled={busy}>{c}</button>)}
+          <button className="chip tonight" onClick={onOpenTonight}>{Ico.moon}<span>Tonight</span></button>
+          {chips.map(c => <button key={c} className="chip" onClick={() => onChip(c)} disabled={busy}>{CHIP_ICON[c] ?? Ico.spark}<span>{c}</span></button>)}
         </div>
       </>)}
       <WorkStrip tasks={work.tasks} approvals={work.approvals} reload={work.reload} />
