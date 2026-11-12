@@ -98,6 +98,41 @@ export function toolSlug(name: string): string {
 
 const list = (xs: readonly string[]) => xs.join(', ');
 
+/** A worked example shown to the model. A test checks that it passes the safety checker. */
+export const TALLY_EXAMPLE = [
+  '(function () {',
+  '  // Read the visible text of the page.',
+  '  const text = document.body.innerText;',
+  '  // Tally each capitalized word with a Map.',
+  '  const tally = new Map();',
+  '  for (const word of text.split(/\\s+/)) {',
+  "    const clean = word.replace(/[^A-Za-z]/g, '');",
+  '    if (clean.length < 3) continue;',
+  '    const first = clean.charAt(0);',
+  '    if (first !== first.toUpperCase()) continue;',
+  '    tally.set(clean, (tally.get(clean) || 0) + 1);',
+  '  }',
+  '  // Sort by count and keep the top ten.',
+  '  const rows = Array.from(tally.entries());',
+  '  rows.sort(function (a, b) { return b.at(1) - a.at(1); });',
+  '  // Show a small panel that closes when it is clicked.',
+  "  const panel = document.createElement('div');",
+  "  panel.style.position = 'fixed';",
+  "  panel.style.top = '20px';",
+  "  panel.style.right = '20px';",
+  "  panel.style.padding = '16px';",
+  "  panel.style.color = 'black';",
+  "  panel.style.zIndex = '2147483647';",
+  '  for (const row of rows.slice(0, 10)) {',
+  "    const line = document.createElement('div');",
+  "    line.textContent = row.at(0) + ': ' + row.at(1);",
+  '    panel.appendChild(line);',
+  '  }',
+  "  panel.addEventListener('click', function () { panel.remove(); });",
+  '  document.body.appendChild(panel);',
+  '})();',
+].join('\n');
+
 export function buildToolPrompt(kind: ToolKind, allowAllPages = false): string {
   const limit = LIMITS[kind];
   const kb = (n: number) => `${Math.round(n / 1024)} KB`;
@@ -137,6 +172,8 @@ export function buildToolPrompt(kind: ToolKind, allowAllPages = false): string {
       '- The whole file is a single self-invoking function: (function () { ... })();',
       '- Show the result in a small fixed-position panel (a div added to document.body) that closes when it is clicked.',
       '- No chrome.* and no browser.* APIs.',
+      'A complete example that follows every rule (note the Map for counting and .at() to read pairs):',
+      TALLY_EXAMPLE,
     );
   } else if (kind === 'extension') {
     specific.push(
