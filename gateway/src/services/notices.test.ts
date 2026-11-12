@@ -173,9 +173,9 @@ describe('summarizeUsage', () => {
   it('facts: first name and the book in progress only', () => {
     const s = summarizeUsage({
       ...empty(),
-      facts: { name: 'Chris Kokoski', books: [{ title: 'Old One', stage: 'published' }, { title: 'The Salt Road', stage: 'drafting', chapter: 7 }] },
+      facts: { name: 'Sam Rivers', books: [{ title: 'Old One', stage: 'published' }, { title: 'The Salt Road', stage: 'drafting', chapter: 7 }] },
     }, NOW);
-    expect(s).toMatchObject({ firstName: 'Chris', bookTitle: 'The Salt Road', bookChapter: 7 });
+    expect(s).toMatchObject({ firstName: 'Sam', bookTitle: 'The Salt Road', bookChapter: 7 });
     expect(summarizeUsage({ ...empty(), facts: { books: [{ title: 'Old One', stage: 'Published' }] } }, NOW).bookTitle).toBeUndefined();
   });
 });
@@ -355,7 +355,7 @@ describe('NoticeService', () => {
     usage = {
       ...empty(),
       messages: MESSAGES.map((m, i) => said(m, i + 1, 9)),
-      facts: { name: 'Chris Kokoski', books: [{ title: 'The Salt Road', stage: 'drafting' }] },
+      facts: { name: 'Sam Rivers', books: [{ title: 'The Salt Road', stage: 'drafting' }] },
     };
   });
   afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
@@ -383,23 +383,23 @@ describe('NoticeService', () => {
   });
 
   it('the model sees only the masked suggestion and the first name, never the author\'s words', async () => {
-    polishReply = async () => 'Chris, "[[1]]" keeps coming up (3 times lately). Shall I do it every week so it is simply ready?';
+    polishReply = async () => 'Sam, "[[1]]" keeps coming up (3 times lately). Shall I do it every week so it is simply ready?';
     const s = await make();
     const n = await s.generate(NOW);
     expect(polishCalls).toHaveLength(1);
     const sent = `${polishCalls[0].system}\n${polishCalls[0].user}`;
     expect(polishCalls[0].system).toBe(POLISH_SYSTEM_PROMPT);
-    expect(polishCalls[0].user).toContain("Author's first name: Chris");
+    expect(polishCalls[0].user).toContain("Author's first name: Sam");
     expect(polishCalls[0].user).toContain('[[1]]');
     for (const m of MESSAGES) {
       expect(sent.toLowerCase()).not.toContain(m.toLowerCase());
       expect(sent.toLowerCase()).not.toContain(normalizePhrase(m));
     }
-    for (const word of ['tidy', 'timeline', 'marguerite', 'lighthouse', 'kokoski', 'salt road']) {
+    for (const word of ['tidy', 'timeline', 'marguerite', 'lighthouse', 'rivers', 'salt road']) {
       expect(sent.toLowerCase()).not.toContain(word);
     }
     // The author still reads their own phrase, restored locally.
-    expect(n!.text).toBe('Chris, "tidy the timeline for chapter" keeps coming up (3 times lately). Shall I do it every week so it is simply ready?');
+    expect(n!.text).toBe('Sam, "tidy the timeline for chapter" keeps coming up (3 times lately). Shall I do it every week so it is simply ready?');
   });
 
   it.each([

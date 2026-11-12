@@ -132,17 +132,17 @@ describe('playbook fallback', () => {
   });
 
   it('the model polishes playbook ideas too, with the book title masked', async () => {
-    usage = { ...empty(), facts: { name: 'Chris Kokoski', ...BOOK } };
-    polishReply = async () => 'Chris, here is a thought: I could comb [[1]] for contradictions in names, ages, eye colors, dates and places. Shall I?';
+    usage = { ...empty(), facts: { name: 'Sam Rivers', ...BOOK } };
+    polishReply = async () => 'Sam, here is a thought: I could comb [[1]] for contradictions in names, ages, eye colors, dates and places. Shall I?';
     const s = await make();
     const n = await s.generate(NOW);
     expect(lastKey()).toBe('play:consistency-check');
     expect(polishCalls).toHaveLength(1);
     expect(polishCalls[0]).toContain('[[1]]');
-    expect(polishCalls[0]).toContain("Author's first name: Chris");
+    expect(polishCalls[0]).toContain("Author's first name: Sam");
     expect(polishCalls[0].toLowerCase()).not.toContain('salt road');
-    expect(polishCalls[0].toLowerCase()).not.toContain('kokoski');
-    expect(n!.text).toBe('Chris, here is a thought: I could comb The Salt Road for contradictions in names, ages, eye colors, dates and places. Shall I?');
+    expect(polishCalls[0].toLowerCase()).not.toContain('rivers');
+    expect(n!.text).toBe('Sam, here is a thought: I could comb The Salt Road for contradictions in names, ages, eye colors, dates and places. Shall I?');
   });
 
   it('takes turns between categories from one idea to the next', async () => {
