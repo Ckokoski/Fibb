@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ConnectorsSection } from './ConnectorsSection';
+import { AppsSection } from './AppsSection';
 import { cue, setSounds, soundsOn } from '../lib/sound';
 import { getNoticeSettings, setNoticeSettings } from '../lib/tasks';
 import {
@@ -113,7 +114,9 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
         {SLOTS.map(slot => <KeyRow key={slot.key} slot={slot} connected={keys.includes(slot.key)} onChanged={reload} />)}
       </section>
 
-      <ConnectorsSection />
+      <AppsSection />
+
+      <ConnectorsSection part="browser" />
 
       {models.length > 0 && (
         <section className="card">
@@ -155,6 +158,8 @@ export function SettingsView({ companion, onCompanionChanged }: { companion: Com
 
       </div>
       <div className="tabpane" hidden={tab !== 'more'}>
+      <ConnectorsSection part="google" />
+
       <section className="card">
         <div className="t">Advanced</div>
         <div className="s"><a href="/legacy/">Previous dashboard</a></div>

@@ -12,7 +12,7 @@ async function j<T>(url: string, init: RequestInit | undefined, fallback: T): Pr
 }
 const post = (body?: unknown): RequestInit => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) });
 
-export function ConnectorsSection() {
+export function ConnectorsSection({ part }: { part: 'browser' | 'google' }) {
   const [g, setG] = useState<GoogleStatus>({ configured: false, connected: false });
   const [b, setB] = useState<BrowserStatus>({ available: false, running: false });
   const [id, setId] = useState('');
@@ -37,10 +37,10 @@ export function ConnectorsSection() {
 
   return (
     <>
-      <section className="card">
-        <div className="keyhead"><span className={`dot${g.connected ? ' on' : ''}`} /><div className="t">Google: Drive, Docs, Gmail, Calendar</div>
+      {part === 'google' && (      <section className="card">
+        <div className="keyhead"><span className={`dot${g.connected ? ' on' : ''}`} /><div className="t">Google with your own credentials</div>
           {g.connected && <span className="hint">{g.email || 'Connected'}</span>}</div>
-        <div className="s">Fibb can find and read your documents, mail and calendar. Creating a doc, changing one, or drafting an email always asks you first. Fibb never sends email; it only leaves drafts.</div>
+        <div className="s">For people who want no connector service in the middle. It takes about ten minutes of setup in Google Cloud. Fibb can find and read your documents, mail and calendar. Creating a doc, changing one, or drafting an email always asks you first. Fibb never sends email; it only leaves drafts.</div>
         {!g.configured && (
           <>
             <ol className="free">
@@ -64,9 +64,9 @@ export function ConnectorsSection() {
           <button className="btn quiet" onClick={async () => { await j('/api/google/disconnect', post(), {}); reload(); }}>Remove client</button></div>}
         {g.connected && <div className="act"><button className="btn" onClick={async () => { await j('/api/google/disconnect', post(), {}); reload(); }}>Disconnect</button></div>}
         {note && <div className="s" role="alert" style={{ color: 'var(--red)' }}>{note}</div>}
-      </section>
+      </section>)}
 
-      <section className="card">
+      {part === 'browser' && (      <section className="card">
         <div className="keyhead"><span className={`dot${b.available ? ' on' : ''}`} /><div className="t">Fibb's browser</div>
           {b.available && <span className="hint">{b.running ? 'Open' : 'Ready'}{b.channel ? ` · ${b.channel === 'msedge' ? 'Edge' : b.channel === 'chrome' ? 'Chrome' : b.channel}` : ''}</span>}</div>
         <div className="s">A separate browser on this computer that Fibb drives for research and writer sites. It keeps its own sign-ins, apart from your everyday browser. Fibb reads pages freely, and asks before it clicks, types or submits anything.</div>
@@ -76,7 +76,7 @@ export function ConnectorsSection() {
             {b.running && <button className="btn quiet" onClick={async () => { await j('/api/browser/close', post(), {}); reload(); }}>Close</button>}
           </div>
           : <div className="s">{b.reason || 'Not available yet. Fibb needs Microsoft Edge or Google Chrome installed.'}</div>}
-      </section>
+      </section>)}
     </>
   );
 }
