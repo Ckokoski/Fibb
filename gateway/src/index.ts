@@ -17,6 +17,9 @@ import helmet from 'helmet';
 import {
   createRequestGuard, createSocketGuard, createRateLimiter, guardOptionsFromEnv, isAllowedOrigin, type GuardOptions,
 } from './security/request-guard.js';
+import {
+  loadOrCreateSessionToken, createSessionGuard, createSessionStaticHeaders, grantSessionCookie, createSocketSessionGuard, SESSION_HEADER,
+} from './security/session-token.js';
 import { createErrorScrubber, createErrorHandler } from './security/redact.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -81,6 +84,7 @@ import { LearningService } from './services/learning.js';
 import { ConfirmationGateService } from './services/confirmation-gate.js';
 import { TaskStore } from './services/tasks.js';
 import { NightShift } from './services/night-shift.js';
+import { NoticeService } from './services/notices.js';
 import { ToolRegistry } from './services/tools/registry.js';
 import { ToolRunner } from './services/tools/runner.js';
 import { BrowserService } from './services/browser.js';
@@ -238,6 +242,8 @@ class FibbGateway {
   private set tasks(v: TaskStore) { this.services.tasks = v; }
   private get nightShift(): NightShift { return this.services.nightShift; }
   private set nightShift(v: NightShift) { this.services.nightShift = v; }
+  private get notices(): NoticeService { return this.services.notices; }
+  private set notices(v: NoticeService) { this.services.notices = v; }
   private get toolRegistry(): ToolRegistry { return this.services.toolRegistry; }
   private set toolRegistry(v: ToolRegistry) { this.services.toolRegistry = v; }
   private get toolRunner(): ToolRunner { return this.services.toolRunner; }
@@ -253,13 +259,36 @@ class FibbGateway {
   // it. Reads services live through the ServiceContainer.
   private pipeline!: MessagePipeline;
   private guardOptions!: GuardOptions;
+  /** Per-install session token (security/session-token.ts). Never logged. */
+  private sessionToken = '';
+
+  /** The port Fibb's own API listens on. */
+  private localPort(): number {
+    return Number(this.services.config?.get('server.port', 3847)) || 3847;
+  }
+
+  /** Call Fibb's own HTTP API from inside the process, with the session token. */
+  private localApi(path: string, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers);
+    headers.set(SESSION_HEADER, this.sessionToken);
+    return fetch(`http://localhost:${this.localPort()}${path}`, { ...init, headers });
+  }
 
   constructor() {
     this.app = express();
     this.server = createServer(this.app);
     // Request guard (CSRF / cross-origin / DNS rebinding). The port is read
     // lazily because config loads in initialize(). See security/request-guard.ts.
-    this.guardOptions = guardOptionsFromEnv(() => Number(this.services.config?.get('server.port', 3847)) || 3847);
+    this.guardOptions = guardOptionsFromEnv(() => this.localPort());
+    // Session token: every /api/* request and Socket.IO handshake must carry
+    // it. Loaded before the first request can arrive; an empty token (the file
+    // could not be written) refuses everything rather than letting it through.
+    try {
+      this.sessionToken = loadOrCreateSessionToken(join(ROOT_DIR, 'workspace'));
+    } catch (err) {
+      logger.error(`Could not create the session token file: ${(err as any)?.code || 'write failed'}`);
+    }
+    const getSessionToken = () => this.sessionToken;
     const guardAudit = (category: string, action: string, data: Record<string, any>) => this.services.audit?.log(category, action, data);
     const corsOrigin = (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) =>
       cb(null, !!origin && isAllowedOrigin(origin, this.guardOptions));
@@ -267,7 +296,7 @@ class FibbGateway {
     this.io = new SocketIO(this.server, {
       // Never a wildcard: only Fibb's own origins, checked again in allowRequest.
       cors: { origin: corsOrigin },
-      allowRequest: createSocketGuard(this.guardOptions, guardAudit),
+      allowRequest: createSocketSessionGuard(getSessionToken, createSocketGuard(this.guardOptions, guardAudit), guardAudit),
     });
 
     // Security headers. The Fibb app has no inline scripts, so script-src is
@@ -302,6 +331,10 @@ class FibbGateway {
     this.app.use(createRequestGuard(this.guardOptions, guardAudit));
     // No credentials, no wildcard: foreign origins get no CORS headers at all.
     this.app.use(cors({ origin: corsOrigin, credentials: false }));
+    // After the Host/Origin guard (and after cors has answered preflights,
+    // which carry no cookie): the session token on every /api/* request. The
+    // cookie that carries it is set where the HTML pages are served (below).
+    this.app.use(createSessionGuard(getSessionToken, guardAudit));
     this.app.use(createRateLimiter());
     this.app.use(createErrorScrubber());
     this.app.use(express.json({ limit: '5mb' }));
@@ -626,7 +659,59 @@ class FibbGateway {
         return { success: false, message: String((err as any)?.message || err) };
       }
     });
+    // ── "I noticed": one small suggestion a day, from activity inside Fibb only ──
+    this.notices = new NoticeService(join(ROOT_DIR, 'workspace'), {
+      loadUsage: async () => {
+        const since = Date.now() - 14 * 86_400_000;
+        const messages: Array<{ role: string; content: string; timestamp: Date }> = [];
+        for (const channel of await this.chatHistory.listChannels()) {
+          if (!/^(webchat|api|telegram|discord)([_-]|$)/.test(channel)) continue; // interactive channels only
+          for (const m of await this.chatHistory.load(channel)) {
+            if (m.role === 'user' && m.timestamp.getTime() >= since) messages.push(m);
+          }
+        }
+        return {
+          messages,
+          tasks: this.tasks.list(),
+          schedules: this.cronScheduler.list().filter(j => j.handler === 'queue-task' || j.handler === 'night-shift'),
+          writingDays: (await this.heartbeat?.getWritingStats()?.getDays()) ?? {},
+          facts: this.facts?.get() ?? {},
+        };
+      },
+      tasks: this.tasks,
+      cron: this.cronScheduler,
+      polish: async (system, user) => {
+        const provider = this.aiRouter.getCheapestAvailableProviderId();
+        if (!provider) throw new Error('no provider');
+        const r = await this.aiRouter.complete({
+          provider, system, messages: [{ role: 'user', content: user }], maxTokens: 120, temperature: 0.4,
+        });
+        return r.text;
+      },
+    });
+    await this.notices.initialize();
+    const emitNotice = (n: unknown) => {
+      if (!n) return;
+      try { this.io?.emit('notice', n); } catch (err) { logger.debug('notice emit failed', err); }
+    };
+    this.cronScheduler.registerHandler('notice', async () => {
+      const n = await this.notices.generate(new Date());
+      emitNotice(n);
+      return { success: true, message: n ? 'One new notice' : 'Nothing new to say' };
+    });
+    // A new install should not wait a day for the first look.
+    setTimeout(() => {
+      this.notices.generate(new Date()).then(emitNotice).catch(() => { /* generate never throws */ });
+    }, 60_000).unref();
     this.cronScheduler.start();
+    if (!this.cronScheduler.list().some(j => j.handler === 'notice')) {
+      try {
+        await this.cronScheduler.createJob({ name: 'Fibb notices', schedule: '30 8 * * *', handler: 'notice' });
+        logger.info('  ✓ Registered daily notices cron (30 8 * * *)');
+      } catch (err) {
+        logger.warn(`  ⚠ Could not seed notices cron: ${(err as any)?.message || err}`);
+      }
+    }
     if (!this.cronScheduler.list().some(j => j.handler === 'night-shift')) {
       try {
         await this.cronScheduler.createJob({ name: 'Night shift', schedule: '0 2 * * *', handler: 'night-shift' });
@@ -1081,6 +1166,7 @@ class FibbGateway {
       const token = await this.vault.get('telegram_bot_token');
       if (token) {
         this.telegram = new TelegramBridge(token, this.config.get('bridges.telegram'));
+        this.telegram.setLocalApi(this.localPort(), this.sessionToken);
         this.telegram.onMessage((content, channel, respond, extra, task, provider, onChunk) =>
           this.handleMessage(content, channel, respond, extra, task, provider, onChunk)
         );
@@ -1125,12 +1211,17 @@ class FibbGateway {
     const hasApp = existsSync(join(appPath, 'index.html'));
 
     // Legacy dashboard stays reachable during the transition.
-    this.app.use('/legacy', express.static(legacyPath));
-    this.app.get('/legacy/*', (_req, res) => res.sendFile(join(legacyPath, 'index.html')));
+    // Every HTML page handed out carries the session cookie the API requires.
+    const htmlCookie = { setHeaders: createSessionStaticHeaders(() => this.sessionToken, this.guardOptions) };
+    this.app.use('/legacy', express.static(legacyPath, htmlCookie));
+    this.app.get('/legacy/*', (req, res) => {
+      grantSessionCookie(req, res, this.sessionToken, this.guardOptions);
+      res.sendFile(join(legacyPath, 'index.html'));
+    });
 
     // The Fibb app is the root when it has been built; otherwise fall back to the legacy dashboard.
     const rootPath = hasApp ? appPath : legacyPath;
-    this.app.use(express.static(rootPath));
+    this.app.use(express.static(rootPath, htmlCookie));
 
     // JSON 404 handler for API routes — MUST run before SPA fallback
     this.app.use((req: any, res: any, next: any) => {
@@ -1142,6 +1233,7 @@ class FibbGateway {
 
     this.app.get('*', (req, res) => {
       if (req.path.startsWith('/api/')) return;
+      grantSessionCookie(req, res, this.sessionToken, this.guardOptions);
       res.sendFile(join(rootPath, 'index.html'), (err) => {
         if (err && !res.headersSent) {
           res.status(500).json({ status: 'error', message: 'Fibb is running but the app build was not found. Run: npm run app:build' });
@@ -1471,7 +1563,7 @@ class FibbGateway {
           status += `\n▶️ Active: **${current.title}** (${current.progress}%)\n`;
           if (currentStep) status += `   Current step: ${currentStep.label}`;
         }
-        status += `\n\n🌐 Dashboard: http://localhost:3847`;
+        status += `\n\n🌐 Dashboard: http://localhost:${this.localPort()}`;
         return status;
       }
 
@@ -1570,7 +1662,7 @@ class FibbGateway {
             .replace(/[-_]/g, ' ')
             .replace(/\b\w/g, c => c.toUpperCase());
 
-          const exportRes = await fetch('http://localhost:3847/api/author-os/format', {
+          const exportRes = await this.localApi('/api/author-os/format', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1833,6 +1925,7 @@ class FibbGateway {
         allowedUsers: this.config.get('bridges.telegram.allowedUsers', []),
         pairingEnabled: this.config.get('bridges.telegram.pairingEnabled', true),
       });
+      this.telegram.setLocalApi(this.localPort(), this.sessionToken);
       this.telegram.onMessage((content, channel, respond, extra, task, provider, onChunk) =>
         this.handleMessage(content, channel, respond, extra, task, provider, onChunk)
       );
