@@ -106,6 +106,7 @@ function BookCard({ book, reload }: { book: Book; reload: () => void }) {
       {note && <div className="s" role="status">{note}</div>}
       <div className="act">
         <button className="btn quiet" onClick={() => setOpen(o => !o)} aria-expanded={open}>{open ? 'Hide chapters' : 'Show chapters'}</button>
+        <button className="btn quiet" onClick={async () => { const t = window.prompt('What is this book called?', book.title); if (!t || !t.trim() || t.trim() === book.title) return; await api(`/api/books/${book.id}`, send('PATCH', { title: t.trim().slice(0, 120) }), {}); reload(); }}>Rename</button>
         <button className="btn quiet" disabled={busy} onClick={async () => { setBusy(true); await api(`/api/books/${book.id}/scan`, send('POST'), {}); setBusy(false); reload(); }}>Check for changes</button>
         <button className="btn quiet" onClick={async () => { if (!window.confirm(`Stop reading ${book.title}? Fibb forgets the folder. Your files are not touched.`)) return; await api(`/api/books/${book.id}`, { method: 'DELETE' }, {}); reload(); }}>Remove</button>
       </div>
@@ -150,7 +151,7 @@ export function BooksView() {
       {picking && <FolderPicker onPick={add} onCancel={() => setPicking(false)} />}
       {(books || []).map(b => <BookCard key={b.id} book={b} reload={reload} />)}
       {books && books.length > 0 && !picking && <div className="act"><button className="btn" onClick={() => setPicking(true)}>Add another book</button></div>}
-      <div className="s" style={{ margin: '0 4px' }}>Fibb only reads. It never changes, moves or deletes your files. What it reads is sent to your AI model so it can help.</div>
+      <div className="muted" style={{ margin: '0 4px' }}>Fibb only reads. It never changes, moves or deletes your files. What it reads is sent to your AI model so it can help.</div>
     </div></div>
   );
 }

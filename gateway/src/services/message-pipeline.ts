@@ -46,6 +46,22 @@ export function maxToolCalls(channel: string): number {
   return channel === 'night-shift' ? MAX_TOOL_CALLS_NIGHT_SHIFT : MAX_TOOL_CALLS_PER_TURN;
 }
 
+/** One plain sentence saying what went wrong with the AI provider and what the author can do. */
+export function plainProviderFailure(providerId: string, errorText: string): string {
+  const name = providerId ? providerId.charAt(0).toUpperCase() + providerId.slice(1) : 'The AI provider';
+  const e = String(errorText || '');
+  if (/api key not valid|api_key_invalid|invalid api key|incorrect api key|invalid x-api-key|unauthorized|\b401\b/i.test(e)) {
+    return `Your ${name} key was rejected. It may have been deleted or replaced. Add a fresh one under Settings, Connections.`;
+  }
+  if (/quota|rate limit|resource_exhausted|\b429\b/i.test(e)) {
+    return `Your ${name} limit is used up for now. Try again in a little while, or add another provider under Settings, Connections.`;
+  }
+  if (/fetch failed|ECONN|ENOTFOUND|ETIMEDOUT|network/i.test(e)) {
+    return `Fibb could not reach ${name}. Check your internet connection and try again.`;
+  }
+  return `${name} could not answer just now. Try again, or check Settings, Connections.`;
+}
+
 /** Tools are offered only where a person (or a night-shift work order) is on the other end. */
 function isToolChannel(channel: string): boolean {
   return channel === 'webchat' || channel === 'night-shift' || channel.startsWith('telegram');
@@ -580,6 +596,7 @@ export class MessagePipeline {
           // know what to fix instead of seeing a generic "trouble connecting" message.
           respond(
             `[AI provider failure]\n` +
+            `${plainProviderFailure(provider.id, primaryErrorText)}\n\n` +
             `Primary (${provider.id}): ${primaryErrorText}\n` +
             `Fallback (${fallback.id}): ${fbText}\n` +
             `Check API keys in Settings, verify Ollama is running (if used), or switch providers.`
@@ -588,6 +605,7 @@ export class MessagePipeline {
       } else {
         respond(
           `[AI provider failure]\n` +
+          `${plainProviderFailure(provider.id, primaryErrorText)}\n\n` +
           `Provider (${provider.id}): ${primaryErrorText}\n` +
           `No fallback provider available. Add an API key or start Ollama in Settings.`
         );
