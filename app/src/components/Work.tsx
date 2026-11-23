@@ -72,7 +72,7 @@ function ReviewItem({ t, reload }: { t: Task; reload: () => void }) {
   );
 }
 
-const MISSING: Record<string, string> = { google: 'Connect Google in Settings first', browser: "Needs Fibb's browser (Edge or Chrome)", book: 'Tell Fibb about your book first' };
+const MISSING: Record<string, string> = { google: 'Connect Google in Settings first', browser: "Needs Fibb's browser (Edge or Chrome)", book: 'Tell Fibb about your book first', manuscript: 'Add your book folder under Books first' };
 
 /** A gallery of things Fibb can do, grouped by kind of help. One click runs one. */
 export function Playbook({ onSay, reload }: { onSay: (text: string) => void; reload: () => void }) {

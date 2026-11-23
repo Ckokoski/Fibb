@@ -363,6 +363,29 @@ a.btn.pri { color: var(--accent-ink); }
 select.input.mini { width: auto; min-width: 130px; padding: 6px 34px 6px 12px; font-size: 12.5px; flex: 0 0 auto; }
 .task .ts { overflow-wrap: anywhere; }
 
+/* Books */
+.book-title { font-size: 20px; letter-spacing: -.01em; }
+.bookstats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+.bookstats > div { padding: 12px 14px; border-radius: 18px; background: var(--surface-2); display: flex; flex-direction: column; }
+.bookstats b { font-size: 22px; font-weight: 700; letter-spacing: -.02em; background: linear-gradient(90deg, var(--accent), var(--peach)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.bookstats span { font-size: 12px; color: var(--text-2); }
+.chno { width: 30px; height: 30px; border-radius: 50%; flex: 0 0 auto; display: grid; place-items: center; background: var(--accent-dim); color: var(--accent); font-size: 12px; font-weight: 700; }
+button.task { cursor: pointer; transition: transform .25s var(--ease), background .2s; }
+button.task:hover { transform: translateX(3px); background: var(--accent-dim); }
+.folderline { margin-top: 12px; font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader { margin-top: 12px; padding: 16px 18px; border-radius: 20px; background: var(--surface-2); animation: rise .4s var(--ease) backwards; }
+.reader-text { margin-top: 10px; font-family: var(--serif); font-size: 17px; line-height: 1.7; white-space: pre-wrap; max-height: 56vh; overflow: auto; }
+.crumbs { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.crumb { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.folders { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-top: 10px; max-height: 44vh; overflow: auto; padding: 2px; }
+.folder { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 16px; background: var(--surface-2); text-align: left; font-size: 14px; transition: transform .25s var(--ease), background .2s; }
+.folder:hover { background: var(--accent-dim); transform: translateY(-2px); }
+.folder .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder .fi { color: var(--accent); display: grid; }
+.folder .fi svg { width: 18px; height: 18px; }
+.folder:focus-visible, button.task:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 900px) { .bookstats b { font-size: 18px; } }
+
 /* Tonight drawer (desktop) */
 .drawer { position: fixed; top: 14px; right: 14px; bottom: 14px; width: 350px; max-width: 92vw; background: var(--surface); border: 1px solid var(--line); border-radius: 28px; box-shadow: var(--shadow); transform: translateX(calc(100% + 20px)); visibility: hidden; transition: transform .4s var(--ease), visibility 0s linear .4s; z-index: 21; padding: 22px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
 .drawer.open { transform: none; visibility: visible; transition: transform .4s var(--ease), visibility 0s; }
