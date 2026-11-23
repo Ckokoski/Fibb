@@ -10,6 +10,12 @@ import { logger } from './logger.js';
 export interface NightShiftDeps {
   tasks: TaskStore;
   run: (prompt: string, onChunk: (c: string) => void) => Promise<string>;
+  /**
+   * Optional: reference material to put in front of the work order (for a
+   * task about a connected book, Fibb's notes on the manuscript). Returns ''
+   * for nothing. A failure here never fails the task.
+   */
+  prepare?: (task: Task) => Promise<string>;
   notify?: (text: string) => void;
   onUpdate?: (t: Task) => void;
   now?: () => Date;
@@ -100,7 +106,11 @@ export class NightShift {
         let result = '';
         let error = '';
         try {
-          result = String((await this.deps.run(buildWorkOrderPrompt(task.title, task.detail), onChunk)) ?? '').trim();
+          let reference = '';
+          if (this.deps.prepare) {
+            try { reference = String((await this.deps.prepare(task)) ?? ''); } catch (err) { logger.debug('night-shift prepare failed', err); }
+          }
+          result = String((await this.deps.run(reference + buildWorkOrderPrompt(task.title, task.detail), onChunk)) ?? '').trim();
           if (!result) error = 'The model returned an empty result.';
         } catch (err) {
           error = String((err as any)?.message || err || 'Unknown error').slice(0, 300);

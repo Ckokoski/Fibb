@@ -27,7 +27,7 @@ const RUN = 'POST /api/playbook/:id/run';
 
 let dir: string;
 let usage: UsageInput;
-let caps: { hasGoogle: boolean; hasBrowser: boolean };
+let caps: { hasGoogle: boolean; hasBrowser: boolean; hasManuscript?: boolean };
 let jobs: any[];
 let added: any[];
 let ran: string[];
@@ -38,7 +38,7 @@ let h: ReturnType<typeof harness>;
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'fibb-playbook-routes-'));
   jobs = []; added = []; ran = []; failTasks = false;
-  caps = { hasGoogle: false, hasBrowser: false };
+  caps = { hasGoogle: false, hasBrowser: false, hasManuscript: true };
   usage = { messages: [], tasks: [], schedules: [], writingDays: {}, facts: { books: [{ title: 'The Salt Road', chapter: 3 }] } };
   notices = new NoticeService(dir, {
     loadUsage: async () => usage,
@@ -88,8 +88,13 @@ describe('playbook routes', () => {
     });
     expect(find('inbox-triage')).toMatchObject({ available: false, missing: 'google' });
     expect(find('comp-titles')).toMatchObject({ available: false, missing: 'browser' });
-    caps = { hasGoogle: true, hasBrowser: true };
+    caps = { hasGoogle: true, hasBrowser: true, hasManuscript: true };
     expect((await h.call('GET /api/playbook')).body.plays.every((p: any) => p.available && !('missing' in p))).toBe(true);
+    caps = { hasGoogle: true, hasBrowser: true, hasManuscript: false };
+    expect((await h.call('GET /api/playbook')).body.plays.find((p: any) => p.id === 'consistency-check')).toMatchObject({ available: false, missing: 'manuscript' });
+    const refused = await h.call(RUN, { params: { id: 'consistency-check' }, body: {} });
+    expect(refused.code).toBe(409);
+    expect(refused.body).toEqual({ error: 'Add your book folder first, then try again.', missing: 'manuscript' });
   });
 
   it('run: 404 for an unknown play, 400 for a bad when', async () => {

@@ -38,6 +38,13 @@ export interface ToolEvent {
 
 /** Most tool calls the model may make in one turn before it must answer. */
 export const MAX_TOOL_CALLS_PER_TURN = 6;
+/** Unattended work orders read whole books chapter by chapter, so they get more steps. */
+export const MAX_TOOL_CALLS_NIGHT_SHIFT = 24;
+
+/** How many tool calls one turn may make on this channel. */
+export function maxToolCalls(channel: string): number {
+  return channel === 'night-shift' ? MAX_TOOL_CALLS_NIGHT_SHIFT : MAX_TOOL_CALLS_PER_TURN;
+}
 
 /** Tools are offered only where a person (or a night-shift work order) is on the other end. */
 function isToolChannel(channel: string): boolean {
@@ -591,7 +598,7 @@ export class MessagePipeline {
   /**
    * One AI turn with tool use. The model either answers (returned as-is) or
    * replies with a `<tool>` call, which is executed and fed back; this repeats
-   * up to MAX_TOOL_CALLS_PER_TURN times, then a final answer is forced. The
+   * up to maxToolCalls(channel) times, then a final answer is forced. The
    * tool-call and tool-result messages exist only in this turn's message
    * array; they are never written to chat history. Tool-call text never
    * reaches onChunk. Tokens and cost are summed across the calls.
@@ -654,7 +661,7 @@ export class MessagePipeline {
         feedback = 'That tool call could not be read. Reply with ONLY <tool>{"name":"...","args":{...}}</tool> using valid JSON, or answer the author without a tool.';
       } else {
         messages.push({ role: 'assistant', content: `${parts.before ? `${parts.before}\n` : ''}<tool>${JSON.stringify({ name: call.name, args: call.args })}</tool>` });
-        const summary = toolSummary(runner.registry.get(call.name), call.name);
+        const summary = toolSummary(runner.registry.get(call.name), call.name, call.args);
         emit({ name: call.name, status: 'start', summary });
         let outcome: Awaited<ReturnType<typeof runner.execute>>;
         try {
@@ -676,7 +683,7 @@ export class MessagePipeline {
         }
       }
 
-      if (!forceFinal && state.calls >= MAX_TOOL_CALLS_PER_TURN) {
+      if (!forceFinal && state.calls >= maxToolCalls(channel)) {
         forceFinal = true;
         feedback += '\n\nYou have used all your tool calls for this turn. Answer the author now with what you have. Do not call another tool.';
       }

@@ -74,6 +74,30 @@ describe('NightShift.runTask', () => {
     expect(calls).toBe(0);
     expect(tasks.get(idea.id)?.status).toBe('queued');
   });
+
+  it('prepare: reference material goes in front of the work order; a failure there never fails the task', async () => {
+    const t = await tasks.add({ title: 'Consistency check: The Lantern Marsh', detail: 'Check the story.' });
+    const prompts: string[] = [];
+    const seen: Task[] = [];
+    const ns = new NightShift({
+      tasks,
+      prepare: async (task) => { seen.push(task); return '<<<BOOK NOTES\nBook: The Lantern Marsh\nBOOK NOTES>>>\n\n'; },
+      run: async (prompt) => { prompts.push(prompt); return 'done'; },
+    });
+    expect((await ns.runTask(t.id))?.status).toBe('review');
+    expect(seen.map(x => [x.id, x.title])).toEqual([[t.id, 'Consistency check: The Lantern Marsh']]);
+    expect(prompts[0]).toBe('<<<BOOK NOTES\nBook: The Lantern Marsh\nBOOK NOTES>>>\n\n' + buildWorkOrderPrompt(t.title, t.detail));
+
+    const t2 = await tasks.add({ title: 'Blurb', detail: 'Three versions' });
+    const quiet = new NightShift({ tasks, prepare: async () => '', run: async (prompt) => { prompts.push(prompt); return 'done'; } });
+    await quiet.runTask(t2.id);
+    expect(prompts[1]).toBe(buildWorkOrderPrompt('Blurb', 'Three versions'));
+
+    const t3 = await tasks.add({ title: 'Blurb again', detail: 'Three versions' });
+    const broken = new NightShift({ tasks, prepare: async () => { throw new Error('disk gone'); }, run: async (prompt) => { prompts.push(prompt); return 'done'; } });
+    expect((await broken.runTask(t3.id))?.status).toBe('review');
+    expect(prompts[2]).toBe(buildWorkOrderPrompt('Blurb again', 'Three versions'));
+  });
 });
 
 describe('NightShift.runQueued', () => {

@@ -84,6 +84,8 @@ import { LearningService } from './services/learning.js';
 import { ConfirmationGateService } from './services/confirmation-gate.js';
 import { TaskStore } from './services/tasks.js';
 import { NightShift } from './services/night-shift.js';
+import { ManuscriptLibrary } from './services/manuscripts.js';
+import { manuscriptTools } from './services/manuscript-tools.js';
 import { NoticeService } from './services/notices.js';
 import { ToolShelf } from './services/tool-shelf.js';
 import { ToolRegistry } from './services/tools/registry.js';
@@ -242,6 +244,8 @@ class FibbGateway {
   private set confirmationGate(v: ConfirmationGateService) { this.services.confirmationGate = v; }
   private get tasks(): TaskStore { return this.services.tasks; }
   private set tasks(v: TaskStore) { this.services.tasks = v; }
+  private get manuscripts(): ManuscriptLibrary { return this.services.manuscripts; }
+  private set manuscripts(v: ManuscriptLibrary) { this.services.manuscripts = v; }
   private get nightShift(): NightShift { return this.services.nightShift; }
   private set nightShift(v: NightShift) { this.services.nightShift = v; }
   private get notices(): NoticeService { return this.services.notices; }
@@ -623,8 +627,38 @@ class FibbGateway {
     this.tasks = new TaskStore(join(ROOT_DIR, 'workspace'));
     await this.tasks.initialize();
     await this.tasks.recoverInterrupted();
+
+    // ── Manuscripts: read-only access to the author's own book folders ──
+    // Heartbeat and the tool registry are created later in startup, so they
+    // are looked up at call time.
+    this.manuscripts = new ManuscriptLibrary(join(ROOT_DIR, 'workspace'), {
+      deniedRoots: [ROOT_DIR],
+      addWords: (count) => { this.heartbeat?.addWords(count); },
+      facts: this.facts,
+      complete: async (system, user) => {
+        const provider = this.aiRouter.getCheapestAvailableProviderId();
+        if (!provider) throw new Error('no provider');
+        const r = await this.aiRouter.complete({
+          provider, system, messages: [{ role: 'user', content: user }], maxTokens: 900, temperature: 0,
+        });
+        return r.text;
+      },
+    });
+    try {
+      await this.manuscripts.initialize();
+      logger.info(`  ✓ Manuscripts: ${this.manuscripts.list().length} book folder(s) connected`);
+    } catch (err) {
+      logger.warn(`  ⚠ Manuscript library could not load: ${(err as any)?.message || err}`);
+    }
+    this.cronScheduler.registerHandler('manuscript-scan', async () => {
+      const r = await this.manuscripts.hourly();
+      return { success: true, message: `Scanned ${r.books} book(s), ${r.wordsAdded} new words, ${r.digested} chapter(s) noted` };
+    });
+
     this.nightShift = new NightShift({
       tasks: this.tasks,
+      // A task about a connected book starts with Fibb's notes on the manuscript.
+      prepare: (task) => this.manuscripts.referenceForTask(task, { injection: this.injectionDetector }),
       run: async (prompt, onChunk) => {
         let text = '';
         await this.handleMessage(prompt, 'night-shift', (t) => { text = t; }, undefined, undefined, undefined, onChunk);
@@ -690,6 +724,7 @@ class FibbGateway {
       capabilities: () => ({
         hasGoogle: this.google?.isConnected() === true,
         hasBrowser: this.browser?.status().available === true,
+        hasManuscript: this.manuscripts?.hasBooks() === true,
       }),
       loadFacts: () => this.facts?.get() ?? {},
       polish: async (system, user) => {
@@ -738,6 +773,14 @@ class FibbGateway {
         logger.info('  ✓ Registered daily notices cron (30 8 * * *)');
       } catch (err) {
         logger.warn(`  ⚠ Could not seed notices cron: ${(err as any)?.message || err}`);
+      }
+    }
+    if (!this.cronScheduler.list().some(j => j.handler === 'manuscript-scan')) {
+      try {
+        await this.cronScheduler.createJob({ name: 'Manuscript scan', schedule: '7 * * * *', handler: 'manuscript-scan' });
+        logger.info('  ✓ Registered hourly manuscript scan cron (7 * * * *)');
+      } catch (err) {
+        logger.warn(`  ⚠ Could not seed manuscript scan cron: ${(err as any)?.message || err}`);
       }
     }
     if (!this.cronScheduler.list().some(j => j.handler === 'night-shift')) {
@@ -935,7 +978,7 @@ class FibbGateway {
       port: Number(this.config.get('server.port', 3847)),
     });
     await this.google.initialize();
-    for (const tool of [...this.browser.tools(), ...this.google.tools()]) this.toolRegistry.register(tool);
+    for (const tool of [...this.browser.tools(), ...this.google.tools(), ...manuscriptTools(this.manuscripts)]) this.toolRegistry.register(tool);
     this.toolRunner = new ToolRunner({
       registry: this.toolRegistry,
       gate: this.confirmationGate,

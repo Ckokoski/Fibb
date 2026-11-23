@@ -21,8 +21,11 @@ export interface Tool {
   run: (args: Record<string, unknown>) => Promise<string>;
   /** Plain-English sentence shown to the author when approval is needed. */
   describe?: (args: Record<string, unknown>) => string;
-  /** Short friendly present-tense phrase for progress UI ("Searching your Drive…"). */
-  summary?: string;
+  /**
+   * Short friendly present-tense phrase for progress UI ("Searching your Drive…").
+   * May be a function of the call's args ("Reading chapter 7…").
+   */
+  summary?: string | ((args: Record<string, unknown>) => string);
   /**
    * Optional: capture extra context at the moment approval is requested (for
    * example which page a click refers to). The returned object replaces the
@@ -34,8 +37,12 @@ export interface Tool {
    * author (a web page, an email, a shared document, a calendar invite).
    * After such a result, write tools in the same turn are treated with more
    * care (see ToolRunner).
+   *
+   * 'manuscript' is the author's own book, read from their own folder. Its
+   * results are scanned and wrapped like any other, but reading them does not
+   * by itself count as reading outside content.
    */
-  source?: 'web' | 'email' | 'drive' | 'calendar' | 'mcp';
+  source?: 'web' | 'email' | 'drive' | 'calendar' | 'mcp' | 'manuscript';
   /** Optional per-tool timeout (ms) that replaces the runner's default. */
   timeoutMs?: number;
 }
@@ -219,7 +226,14 @@ export function wrapToolResult(name: string, text: string, flagged: boolean): st
 }
 
 /** Friendly progress phrase for a tool. */
-export function toolSummary(tool: Tool | undefined, name: string): string {
-  if (tool?.summary) return tool.summary;
+export function toolSummary(tool: Tool | undefined, name: string, args?: Record<string, unknown>): string {
+  if (typeof tool?.summary === 'function') {
+    try {
+      const s = String(tool.summary(args && typeof args === 'object' ? args : {}) ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+      if (s) return s;
+    } catch { /* fall through to the generic phrase */ }
+  } else if (tool?.summary) {
+    return tool.summary;
+  }
   return `Using ${String(name).replace(/[^a-z0-9_]/gi, '').replace(/_/g, ' ').slice(0, 40) || 'a tool'}…`;
 }

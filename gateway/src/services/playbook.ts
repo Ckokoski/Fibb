@@ -10,7 +10,11 @@
  * text the author would say, and "their current book" in work orders.
  */
 
-export type PlayNeed = 'book' | 'google' | 'browser';
+/**
+ * 'book': Fibb knows the book's title. 'manuscript': the author has connected
+ * the folder their manuscript lives in, so Fibb can read the real text.
+ */
+export type PlayNeed = 'book' | 'manuscript' | 'google' | 'browser';
 export type PlayCategory = 'Story' | 'Research' | 'Marketing' | 'Routine' | 'Tools' | 'Email and calendar';
 
 export type PlayAction =
@@ -30,7 +34,14 @@ export interface Play {
   action: PlayAction;
 }
 
-export interface PlayContext { bookTitle?: string; chapter?: number; hasGoogle: boolean; hasBrowser: boolean }
+export interface PlayContext {
+  bookTitle?: string;
+  chapter?: number;
+  hasGoogle: boolean;
+  hasBrowser: boolean;
+  /** A manuscript folder is connected. Left out when that is not known. */
+  hasManuscript?: boolean;
+}
 
 export const PLAY_CATEGORIES: PlayCategory[] = ['Story', 'Research', 'Marketing', 'Routine', 'Tools', 'Email and calendar'];
 
@@ -39,6 +50,14 @@ export const PLAY_CATEGORIES: PlayCategory[] = ['Story', 'Research', 'Marketing'
 const SOURCES =
   'Work from the manuscript, notes and memory you have for {book}. ' +
   "If Google is connected, search the author's Google Drive for the manuscript and notes first, and read what you find before you start.";
+const BOOK_SOURCES =
+  'Work from the real text of {book}. If the manuscript folder is connected you have these tools: ' +
+  'book_overview (the chapter list and a summary of each chapter), book_facts (the cast, places, timeline and open threads, with chapter numbers), ' +
+  'book_search (find a name, word or phrase anywhere in the book) and book_read (read a chapter, part by part). ' +
+  'Start with book_overview and book_facts, use book_search to check each detail across the whole book, and use book_read to read the passages that matter before you report on them. ' +
+  'Give the chapter number for every finding, and quote the text only as you actually read it. ' +
+  'If those tools are not available, use the notes and memory you have for {book}' +
+  " and, if Google is connected, search the author's Google Drive for the manuscript and read what you find; say at the top that you could not read the manuscript itself.";
 const DRIVE_FIRST =
   "Search the author's Google Drive for the manuscript and notes first, and read what you find before you start.";
 const BROWSE =
@@ -61,14 +80,14 @@ export const PLAYS: Play[] = [
     category: 'Story',
     title: 'Check the story for contradictions',
     blurb: 'I can comb {book} for contradictions in names, ages, eye colors, dates and places.',
-    needs: ['book'],
+    needs: ['book', 'manuscript'],
     label: 'Check it',
     action: {
       kind: 'task',
       title: 'Consistency check: {book}',
       detail: order(
         'Run a story consistency check on {book}.',
-        SOURCES,
+        BOOK_SOURCES,
         'Check these, chapter by chapter: character names and their spellings, ages and birthdays, eye and hair colors and other physical details, the timeline (dates, days of the week, seasons, how long things take), places and distances, and who knows what at each point in the story.',
         'Report a Markdown table of contradictions with these columns: What conflicts, First appearance (chapter and a short quote), Second appearance (chapter and a short quote), Suggested fix. Sort the most serious first. After the table, add a short list of details that are consistent but worth writing down, such as ages and eye colors, so the author has a reference.',
         FINISH,
@@ -80,14 +99,14 @@ export const PLAYS: Play[] = [
     category: 'Story',
     title: 'Look for plot holes',
     blurb: 'I can read {book} for plot holes and loose logic and list each one with a possible fix.',
-    needs: ['book'],
+    needs: ['book', 'manuscript'],
     label: 'Look for holes',
     action: {
       kind: 'task',
       title: 'Plot hole pass: {book}',
       detail: order(
         'Read {book} looking for plot holes.',
-        SOURCES,
+        BOOK_SOURCES,
         'Look for: events with no cause, characters acting against what they want or know, problems that solve themselves, questions raised and never answered, things set up and never paid off, and payoffs with no setup.',
         'For each one give: where it happens (chapter), what the problem is in one or two sentences, how much it matters (small, medium or large), and one or two concrete ways to fix it with the least rewriting.',
         FINISH,
@@ -106,7 +125,7 @@ export const PLAYS: Play[] = [
       title: 'Book dashboard: {book}',
       detail: order(
         'Build a one-page dashboard for {book}.',
-        SOURCES,
+        BOOK_SOURCES,
         'Sections, in this order: Progress (chapters drafted, word count if you can tell, the stage the book is in, where the author left off). Cast list (each named character in one line: role, what they want, where they stand now). Open threads (plot lines and questions still unresolved, with the chapter each one started in). Promises made to the reader (things the story has set up that it must pay off). Next three steps (the three most useful things to do next, each small enough for one sitting).',
         'Keep it to one page: short lines and small tables, no long paragraphs.',
         FINISH,
@@ -125,7 +144,7 @@ export const PLAYS: Play[] = [
       title: 'Character sheets: {book}',
       detail: order(
         'Write a character sheet for each main character in {book}, using only what the text and notes already establish.',
-        SOURCES,
+        BOOK_SOURCES,
         'For each character: full name and what others call them, age, appearance, how they speak (with one short quoted line), what they want, what they fear, their key relationships, their secrets, and where they are at the latest point in the story. Mark anything the text leaves open as "not stated yet".',
         FINISH,
       ),
@@ -136,14 +155,14 @@ export const PLAYS: Play[] = [
     category: 'Story',
     title: 'Summarize every chapter',
     blurb: 'I can write a short summary of each chapter of {book} so the whole shape is easy to see.',
-    needs: ['book'],
+    needs: ['book', 'manuscript'],
     label: 'Summarize it',
     action: {
       kind: 'task',
       title: 'Chapter summaries: {book}',
       detail: order(
         'Write a summary of every chapter of {book} that exists so far.',
-        SOURCES,
+        BOOK_SOURCES,
         'For each chapter give: the chapter number and title, three to five sentences on what happens, whose point of view it is in, where and when it takes place, and what changes by the end. Finish with a ten line outline of the whole book as it stands.',
         FINISH,
       ),
@@ -200,7 +219,7 @@ export const PLAYS: Play[] = [
       title: 'Series bible: {book}',
       detail: order(
         'Start a series bible for {book}.',
-        SOURCES,
+        BOOK_SOURCES,
         'Sections: World rules (how things work, including any magic, technology or laws, each with the chapter that establishes it). Cast (name, role, fixed facts such as age and appearance). Places (each with a two line description and who lives there). Timeline (events in order with dates where given). Running threads (things that could carry into another book). Style notes (tense, point of view, recurring words and names to spell the same way every time).',
         FINISH,
       ),
@@ -211,14 +230,14 @@ export const PLAYS: Play[] = [
     category: 'Story',
     title: 'Check the pacing',
     blurb: 'I can map the pace of {book} chapter by chapter and point out where it drags or rushes.',
-    needs: ['book'],
+    needs: ['book', 'manuscript'],
     label: 'Check it',
     action: {
       kind: 'task',
       title: 'Pacing check: {book}',
       detail: order(
         'Check the pacing of {book}.',
-        SOURCES,
+        BOOK_SOURCES,
         'Make a table with one row per chapter: rough length, what kind of chapter it is (action, conversation, reflection, setup), how much changes for the main character, and a pace rating from 1 (slow) to 5 (fast). Below the table, name the three places where the story drags and the three where it rushes, and give one specific suggestion for each.',
         FINISH,
       ),
@@ -229,14 +248,14 @@ export const PLAYS: Play[] = [
     category: 'Story',
     title: 'Get first-reader notes on a chapter',
     blurb: 'I can read your latest chapter of {book} like a first reader and tell you how it landed.',
-    needs: ['book'],
+    needs: ['book', 'manuscript'],
     label: 'Read it',
     action: {
       kind: 'task',
       title: 'First-reader notes: {book}',
       detail: order(
         'Read the most recent chapter of {book} the way a thoughtful first reader would, and write notes for the author.',
-        SOURCES,
+        BOOK_SOURCES,
         'Cover: what you understood to be happening, where you were most pulled in, where your attention slipped, anything that confused you, what you expect to happen next, and three lines you liked (quoted). Be honest and kind. Do not rewrite the chapter.',
         FINISH,
       ),
@@ -287,7 +306,7 @@ export const PLAYS: Play[] = [
       title: 'Setting research: {book}',
       detail: order(
         'Research the setting of {book}.',
-        SOURCES,
+        BOOK_SOURCES,
         BROWSE,
         'First work out from the material where and when the story takes place. Then gather concrete, usable details: what the place looks, sounds and smells like, weather and seasons, food, clothing, work, transport, money, how people speak, and a few small facts a local would know. Group them under headings and keep each detail to one or two lines with its source.',
         FINISH,
@@ -306,7 +325,7 @@ export const PLAYS: Play[] = [
       title: 'Fact check: latest chapter of {book}',
       detail: order(
         'Fact-check the most recent chapter of {book}.',
-        SOURCES,
+        BOOK_SOURCES,
         BROWSE,
         'List every checkable claim about the real world: dates, historical events, science, medicine, law, geography, travel times, prices, technology and how jobs are done. For each, give a verdict (correct, wrong, or could not confirm), what the sources say, and a suggested correction where one is needed. Leave invented story facts alone.',
         FINISH,
@@ -363,7 +382,7 @@ export const PLAYS: Play[] = [
       title: 'Back cover blurb: {book}',
       detail: order(
         'Draft the back cover blurb for {book}.',
-        SOURCES,
+        BOOK_SOURCES,
         'Write three versions of 120 to 180 words each: one that leads with the character, one that leads with the premise, and one that leads with mood and voice. Each needs a hook in the first line, the stakes, and no spoilers past the midpoint. Add a one line tagline for each, then say which version you would use and why.',
         FINISH,
       ),
@@ -418,7 +437,7 @@ export const PLAYS: Play[] = [
       title: 'Query letter: {book}',
       detail: order(
         'Draft a query letter to literary agents for {book}.',
-        SOURCES,
+        BOOK_SOURCES,
         'One page: a one or two sentence hook, a pitch paragraph of about 150 words (character, what they want, what stands in the way, what is at stake), a housekeeping line (title, genre, word count, two comparable titles) and a short bio paragraph. Leave clearly marked blanks such as [word count] for facts you do not have. Do not send it to anyone.',
         FINISH,
       ),
@@ -635,13 +654,33 @@ export const PLAYS: Play[] = [
 /** A play is available when everything it needs is present. Reports the first missing need. */
 export function availability(play: Play, ctx: PlayContext): { available: boolean; missing?: PlayNeed } {
   for (const need of play.needs) {
-    const have = need === 'book' ? !!ctx.bookTitle?.trim() : need === 'google' ? ctx.hasGoogle === true : ctx.hasBrowser === true;
+    const have = need === 'book' ? !!ctx.bookTitle?.trim()
+      : need === 'manuscript' ? ctx.hasManuscript === true
+        : need === 'google' ? ctx.hasGoogle === true
+          : ctx.hasBrowser === true;
     if (!have) return { available: false, missing: need };
   }
   return { available: true };
 }
 
 const fill = (text: string, book: string): string => text.split('{book}').join(book);
+
+/** Plays whose work order is about the whole book, so they work from the manuscript tools. */
+export const BOOK_PLAY_IDS = [
+  'consistency-check', 'plot-hole-pass', 'book-dashboard', 'character-sheets', 'chapter-summaries', 'pacing-check',
+  'first-reader-notes', 'series-bible-start', 'back-cover-blurb', 'query-letter', 'fact-check-chapter', 'setting-research',
+];
+
+/** Is this task title one that a book play produces ("Consistency check: The Salt Road")? */
+export function isBookPlayTitle(title: string): boolean {
+  const t = String(title ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (!t) return false;
+  return PLAYS.some(p => {
+    if (!BOOK_PLAY_IDS.includes(p.id) || p.action.kind === 'say') return false;
+    const prefix = p.action.title.split('{book}')[0].trim().toLowerCase();
+    return prefix.length >= 6 && t.startsWith(prefix);
+  });
+}
 
 /** The play with `{book}` filled in everywhere. Never mutates the original. */
 export function renderPlay(play: Play, ctx: PlayContext): Play {

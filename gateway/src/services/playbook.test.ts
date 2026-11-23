@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
-  PLAYS, PLAY_CATEGORIES, availability, renderPlay, pickPlay,
+  PLAYS, PLAY_CATEGORIES, BOOK_PLAY_IDS, availability, renderPlay, pickPlay, isBookPlayTitle,
   type Play, type PlayContext, type PlayCategory,
 } from './playbook.js';
 import { validateCronExpression } from './cron-scheduler.js';
 
 const bare: PlayContext = { hasGoogle: false, hasBrowser: false };
-const full: PlayContext = { bookTitle: 'The Salt Road', chapter: 7, hasGoogle: true, hasBrowser: true };
+const full: PlayContext = { bookTitle: 'The Salt Road', chapter: 7, hasGoogle: true, hasBrowser: true, hasManuscript: true };
 const byId = (id: string): Play => {
   const p = PLAYS.find(x => x.id === id);
   if (!p) throw new Error(`no play ${id}`);
@@ -49,7 +49,7 @@ describe('PLAYS', () => {
     expect(p.label.length).toBeGreaterThan(1);
     expect(p.label.length).toBeLessThanOrEqual(20);
     expect(Array.isArray(p.needs)).toBe(true);
-    for (const need of p.needs) expect(['book', 'google', 'browser']).toContain(need);
+    for (const need of p.needs) expect(['book', 'manuscript', 'google', 'browser']).toContain(need);
     expect(new Set(p.needs).size).toBe(p.needs.length);
     expect(['task', 'schedule', 'say']).toContain(p.action.kind);
     if (p.action.kind === 'say') {
@@ -84,7 +84,11 @@ describe('PLAYS', () => {
         expect(d, p.id).toContain('Use your browser to look things up and cite the page titles and addresses you used');
       }
       if (p.needs.includes('google')) expect(d, p.id).toMatch(/Gmail tools|Google Calendar tools|Search the author's Google Drive/);
-      else if (d.includes('{book}')) expect(d, p.id).toContain("search the author's Google Drive for the manuscript and notes first");
+      else if (BOOK_PLAY_IDS.includes(p.id)) {
+        // Book plays work from the real manuscript and must cite chapters.
+        for (const tool of ['book_overview', 'book_facts', 'book_search', 'book_read']) expect(d, p.id).toContain(tool);
+        expect(d, p.id).toContain('Give the chapter number for every finding');
+      } else if (d.includes('{book}')) expect(d, p.id).toContain("search the author's Google Drive for the manuscript and notes first");
     }
   });
 
@@ -149,7 +153,11 @@ describe('availability', () => {
   it('reports the first missing need', () => {
     expect(availability(byId('consistency-check'), bare)).toEqual({ available: false, missing: 'book' });
     expect(availability(byId('consistency-check'), { ...bare, bookTitle: '   ' })).toEqual({ available: false, missing: 'book' });
-    expect(availability(byId('consistency-check'), { ...bare, bookTitle: 'Tide' })).toEqual({ available: true });
+    expect(availability(byId('consistency-check'), { ...bare, bookTitle: 'Tide' })).toEqual({ available: false, missing: 'manuscript' });
+    expect(availability(byId('consistency-check'), { ...bare, bookTitle: 'Tide', hasManuscript: false })).toEqual({ available: false, missing: 'manuscript' });
+    expect(availability(byId('consistency-check'), { ...bare, hasManuscript: true })).toEqual({ available: false, missing: 'book' });
+    expect(availability(byId('consistency-check'), { ...bare, bookTitle: 'Tide', hasManuscript: true })).toEqual({ available: true });
+    expect(availability(byId('book-dashboard'), { ...bare, bookTitle: 'Tide' })).toEqual({ available: true });
     expect(availability(byId('inbox-triage'), bare)).toEqual({ available: false, missing: 'google' });
     expect(availability(byId('inbox-triage'), { ...bare, hasGoogle: true })).toEqual({ available: true });
     expect(availability(byId('comp-titles'), bare)).toEqual({ available: false, missing: 'browser' });
@@ -157,8 +165,35 @@ describe('availability', () => {
     expect(availability(byId('setting-research'), { ...bare, hasBrowser: true })).toEqual({ available: false, missing: 'book' });
     expect(availability(byId('setting-research'), full)).toEqual({ available: true });
   });
-  it('everything is available with a book, Google and a browser', () => {
+  it('everything is available with a book, its folder, Google and a browser', () => {
     for (const p of PLAYS) expect(availability(p, full), p.id).toEqual({ available: true });
+  });
+  it('the whole-book checks need the manuscript folder; the gallery can say "Add your book folder first"', () => {
+    const needing = PLAYS.filter(p => p.needs.includes('manuscript')).map(p => p.id).sort();
+    expect(needing).toEqual(['chapter-summaries', 'consistency-check', 'first-reader-notes', 'pacing-check', 'plot-hole-pass']);
+    for (const id of needing) {
+      expect(byId(id).needs).toEqual(['book', 'manuscript']);
+      expect(availability(byId(id), { ...full, hasManuscript: false })).toEqual({ available: false, missing: 'manuscript' });
+    }
+  });
+});
+
+describe('book plays', () => {
+  it('lists the twelve plays that work from the manuscript', () => {
+    expect(BOOK_PLAY_IDS).toHaveLength(12);
+    for (const id of BOOK_PLAY_IDS) expect(byId(id).action.kind, id).toBe('task');
+  });
+  it('recognises a task title made by a book play, with or without the book title', () => {
+    for (const id of BOOK_PLAY_IDS) {
+      const a = renderPlay(byId(id), full).action;
+      expect(isBookPlayTitle(a.kind === 'say' ? '' : a.title), id).toBe(true);
+    }
+    expect(isBookPlayTitle('consistency check: your book')).toBe(true);
+    expect(isBookPlayTitle('  Plot hole pass:   Tide ')).toBe(true);
+    expect(isBookPlayTitle('Inbox triage')).toBe(false);
+    expect(isBookPlayTitle('Newsletter draft')).toBe(false);
+    expect(isBookPlayTitle('Outline chapter 3')).toBe(false);
+    expect(isBookPlayTitle('')).toBe(false);
   });
 });
 

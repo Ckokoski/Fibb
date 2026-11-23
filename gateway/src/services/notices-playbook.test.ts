@@ -25,7 +25,7 @@ const playOf = (key: string) => PLAYS.find(p => `play:${p.id}` === key)!;
 
 let dir: string;
 let usage: UsageInput;
-let caps: { hasGoogle: boolean; hasBrowser: boolean };
+let caps: { hasGoogle: boolean; hasBrowser: boolean; hasManuscript?: boolean };
 let added: any[];
 let jobs: any[];
 let loads: number;
@@ -57,7 +57,7 @@ const BARE: PlayContext = { hasGoogle: false, hasBrowser: false };
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'fibb-notices-playbook-'));
   usage = empty();
-  caps = { hasGoogle: false, hasBrowser: false };
+  caps = { hasGoogle: false, hasBrowser: false, hasManuscript: true };
   added = []; jobs = []; loads = 0; polishCalls = []; polishReply = null; failTasks = false;
 });
 afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
@@ -468,6 +468,32 @@ describe('rules h and i', () => {
     expect(keysOf(s, ctx({ hasGoogle: true }))).toEqual(['review:waiting', 'writing:back-in', 'play:book-dashboard', 'play:inbox-triage']);
   });
 
+  it('j. a book in facts and no manuscript folder: point to Books, with no action', () => {
+    const all = candidateNotices({ ...quiet(), bookTitle: 'The Salt Road' }, { ctx: ctx({ hasManuscript: false }), ranPlayIds: new Set() });
+    expect(all).toEqual([{
+      key: 'manuscript:connect',
+      text: 'I can read your manuscript straight from its folder on this computer. Add it under Books and I can check it for you.',
+    }]);
+    expect(all[0].text.length).toBeLessThanOrEqual(MAX_NOTICE_CHARS);
+    // Connected, not known, or no book: nothing to say.
+    expect(keysOf({ ...quiet(), bookTitle: 'The Salt Road' }, ctx({ hasManuscript: true }))).toEqual([]);
+    expect(keysOf({ ...quiet(), bookTitle: 'The Salt Road' }, ctx())).toEqual([]);
+    expect(keysOf(quiet(), ctx({ bookTitle: undefined, hasManuscript: false }))).toEqual([]);
+    // It comes last among the rules.
+    expect(keysOf(busy(), ctx({ hasGoogle: true, hasManuscript: false }))).toEqual(['play:book-dashboard', 'play:inbox-triage', 'manuscript:connect']);
+  });
+
+  it('in the service: j comes before the playbook fallback and carries no action', async () => {
+    usage = { ...empty(), facts: BOOK };
+    caps = { hasGoogle: false, hasBrowser: false, hasManuscript: false };
+    const s = await make();
+    const n = await s.generate(NOW);
+    expect(lastKey()).toBe('manuscript:connect');
+    expect(n!.text).toContain('Add it under Books');
+    expect(n!.action).toBeUndefined();
+    expect(stored().playSeq).toBe(0);
+  });
+
   it('in the service: h fires before the playbook, and stops once the dashboard or check has been run', async () => {
     usage = {
       ...empty(),
@@ -531,6 +557,11 @@ describe('playbook() and runPlay()', () => {
 
     usage = { ...empty(), facts: BOOK };
     caps = { hasGoogle: true, hasBrowser: true };
+    // Without the book folder the whole-book checks say so; with it, everything is on.
+    const noFolder = await s.playbook();
+    expect(noFolder.filter(p => !p.available).map(p => [p.id, p.missing])).toEqual(
+      ['consistency-check', 'plot-hole-pass', 'chapter-summaries', 'pacing-check', 'first-reader-notes'].map(id => [id, 'manuscript']));
+    caps = { hasGoogle: true, hasBrowser: true, hasManuscript: true };
     const full = await s.playbook();
     expect(full.every(p => p.available && p.missing === undefined)).toBe(true);
     expect(full.find(p => p.id === 'consistency-check')!.blurb).toContain('The Salt Road');
@@ -541,7 +572,8 @@ describe('playbook() and runPlay()', () => {
     const s = await make({ loadFacts: undefined, capabilities: () => { throw new Error('boom'); } });
     const list = await s.playbook();
     expect(loads).toBe(1);
-    expect(list.find(p => p.id === 'consistency-check')!.available).toBe(true);
+    expect(list.find(p => p.id === 'book-dashboard')!.available).toBe(true);
+    expect(list.find(p => p.id === 'consistency-check')).toMatchObject({ available: false, missing: 'manuscript' });
     expect(list.find(p => p.id === 'inbox-triage')!.available).toBe(false);
   });
 
