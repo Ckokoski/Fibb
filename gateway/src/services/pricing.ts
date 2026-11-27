@@ -153,6 +153,9 @@ export const LLM_PRICING: Record<string, LLMPrice> = {
   'o4-mini':     { costPer1kInput: 0.0011, costPer1kOutput: 0.0044, confidence: 'rough', lastVerified: '2026-07-06', note: 'OpenAI o4-mini — rough estimate, re-verify' },
 
   // ── Google Gemini (free tier = $0) ──
+  'gemini-flash-latest': { costPer1kInput: 0, costPer1kOutput: 0, confidence: 'listed', lastVerified: '2026-11-27', note: 'Gemini Flash (always-current alias) — free tier ($0), rate-limited' },
+  'gemini-flash-lite-latest': { costPer1kInput: 0, costPer1kOutput: 0, confidence: 'listed', lastVerified: '2026-11-27', note: 'Gemini Flash Lite (always-current alias) — free tier ($0), rate-limited' },
+  'gemini-pro-latest': { costPer1kInput: 0, costPer1kOutput: 0, confidence: 'rough', lastVerified: '2026-11-27', note: 'Gemini Pro (always-current alias) — free tier limits vary; unverified' },
   'gemini-2.5-flash': { costPer1kInput: 0, costPer1kOutput: 0, confidence: 'listed', lastVerified: '2026-07-06', note: 'Gemini 2.5 Flash — free tier ($0), rate-limited' },
   'gemini-2.5-pro':   { costPer1kInput: 0, costPer1kOutput: 0, confidence: 'listed', lastVerified: '2026-07-06', note: 'Gemini 2.5 Pro — free tier ($0), rate-limited' },
 

@@ -261,7 +261,7 @@ describe('AIRouter provider selection and tiering (mocked vault/network)', () =>
       await vault.set('gemini_api_key', 'k1');
       const router = new AIRouter({ ollama: { enabled: false } }, vault, costs, workspaceDir);
       await router.initialize();
-      expect(router.getActiveProviders().find(p => p.id === 'gemini')!.model).toBe('gemini-2.5-flash');
+      expect(router.getActiveProviders().find(p => p.id === 'gemini')!.model).toBe('gemini-flash-latest');
     });
 
     it('uses config.<provider>.model over the hardcoded default', async () => {
@@ -356,9 +356,9 @@ describe('AIRouter provider selection and tiering (mocked vault/network)', () =>
       const info = router.getProviderModelInfo();
       const gemini = info.find(p => p.id === 'gemini')!;
       expect(gemini.available).toBe(true);
-      expect(gemini.currentModel).toBe('gemini-2.5-flash');
-      expect(gemini.defaultModel).toBe('gemini-2.5-flash');
-      expect(gemini.knownModels).toContain('gemini-2.5-pro');
+      expect(gemini.currentModel).toBe('gemini-flash-latest');
+      expect(gemini.defaultModel).toBe('gemini-flash-latest');
+      expect(gemini.knownModels).toContain('gemini-pro-latest');
       expect(gemini.price.costPer1kInput).toBe(0);
       // Providers without a key still appear, with available=false and the resolved default model.
       const claude = info.find(p => p.id === 'claude')!;
@@ -411,5 +411,22 @@ describe('AIRouter provider selection and tiering (mocked vault/network)', () =>
       expect(stats2.hits).toBe(1);
       expect(stats2.savedTokens).toBeGreaterThan(0);
     });
+  });
+});
+
+describe('pickOllamaModel', () => {
+  const installed = ['gemma4:latest', 'glm-4.6:cloud', 'qwen2.5:3b', 'gemma2:2b'];
+  it('keeps the wanted model when it is installed', async () => {
+    const { pickOllamaModel } = await import('./router.js');
+    expect(pickOllamaModel('gemma4', installed)).toBe('gemma4');
+    expect(pickOllamaModel('qwen2.5', installed)).toBe('qwen2.5:3b');
+    expect(pickOllamaModel('gemma2:2b', installed)).toBe('gemma2:2b');
+  });
+  it('falls back to the best installed local model, never a cloud one', async () => {
+    const { pickOllamaModel } = await import('./router.js');
+    expect(pickOllamaModel('llama3.2', installed)).toBe('gemma4:latest');
+    expect(pickOllamaModel('llama3.2', ['glm-4.6:cloud', 'dolphin-phi:2.7b'])).toBe('dolphin-phi:2.7b');
+    expect(pickOllamaModel('llama3.2', ['glm-4.6:cloud'])).toBe('llama3.2');
+    expect(pickOllamaModel('llama3.2', [])).toBe('llama3.2');
   });
 });

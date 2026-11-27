@@ -18,7 +18,7 @@
       "model": "llama3.2"
     },
     "gemini": {
-      "model": "gemini-2.5-flash"
+      "model": "gemini-flash-latest"
     },
     "deepseek": {
       "model": "deepseek-chat"
