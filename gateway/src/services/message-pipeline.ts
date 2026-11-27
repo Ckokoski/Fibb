@@ -38,6 +38,29 @@ export interface ToolEvent {
 
 /** Most tool calls the model may make in one turn before it must answer. */
 export const MAX_TOOL_CALLS_PER_TURN = 6;
+/** Unattended work orders read whole books chapter by chapter, so they get more steps. */
+export const MAX_TOOL_CALLS_NIGHT_SHIFT = 24;
+
+/** How many tool calls one turn may make on this channel. */
+export function maxToolCalls(channel: string): number {
+  return channel === 'night-shift' ? MAX_TOOL_CALLS_NIGHT_SHIFT : MAX_TOOL_CALLS_PER_TURN;
+}
+
+/** One plain sentence saying what went wrong with the AI provider and what the author can do. */
+export function plainProviderFailure(providerId: string, errorText: string): string {
+  const name = providerId ? providerId.charAt(0).toUpperCase() + providerId.slice(1) : 'The AI provider';
+  const e = String(errorText || '');
+  if (/api key not valid|api_key_invalid|invalid api key|incorrect api key|invalid x-api-key|unauthorized|\b401\b/i.test(e)) {
+    return `Your ${name} key was rejected. It may have been deleted or replaced. Add a fresh one under Settings, Connections.`;
+  }
+  if (/quota|rate limit|resource_exhausted|\b429\b/i.test(e)) {
+    return `Your ${name} limit is used up for now. Try again in a little while, or add another provider under Settings, Connections.`;
+  }
+  if (/fetch failed|ECONN|ENOTFOUND|ETIMEDOUT|network/i.test(e)) {
+    return `Fibb could not reach ${name}. Check your internet connection and try again.`;
+  }
+  return `${name} could not answer just now. Try again, or check Settings, Connections.`;
+}
 
 /** Tools are offered only where a person (or a night-shift work order) is on the other end. */
 function isToolChannel(channel: string): boolean {
@@ -573,6 +596,7 @@ export class MessagePipeline {
           // know what to fix instead of seeing a generic "trouble connecting" message.
           respond(
             `[AI provider failure]\n` +
+            `${plainProviderFailure(provider.id, primaryErrorText)}\n\n` +
             `Primary (${provider.id}): ${primaryErrorText}\n` +
             `Fallback (${fallback.id}): ${fbText}\n` +
             `Check API keys in Settings, verify Ollama is running (if used), or switch providers.`
@@ -581,6 +605,7 @@ export class MessagePipeline {
       } else {
         respond(
           `[AI provider failure]\n` +
+          `${plainProviderFailure(provider.id, primaryErrorText)}\n\n` +
           `Provider (${provider.id}): ${primaryErrorText}\n` +
           `No fallback provider available. Add an API key or start Ollama in Settings.`
         );
@@ -591,7 +616,7 @@ export class MessagePipeline {
   /**
    * One AI turn with tool use. The model either answers (returned as-is) or
    * replies with a `<tool>` call, which is executed and fed back; this repeats
-   * up to MAX_TOOL_CALLS_PER_TURN times, then a final answer is forced. The
+   * up to maxToolCalls(channel) times, then a final answer is forced. The
    * tool-call and tool-result messages exist only in this turn's message
    * array; they are never written to chat history. Tool-call text never
    * reaches onChunk. Tokens and cost are summed across the calls.
@@ -654,7 +679,7 @@ export class MessagePipeline {
         feedback = 'That tool call could not be read. Reply with ONLY <tool>{"name":"...","args":{...}}</tool> using valid JSON, or answer the author without a tool.';
       } else {
         messages.push({ role: 'assistant', content: `${parts.before ? `${parts.before}\n` : ''}<tool>${JSON.stringify({ name: call.name, args: call.args })}</tool>` });
-        const summary = toolSummary(runner.registry.get(call.name), call.name);
+        const summary = toolSummary(runner.registry.get(call.name), call.name, call.args);
         emit({ name: call.name, status: 'start', summary });
         let outcome: Awaited<ReturnType<typeof runner.execute>>;
         try {
@@ -676,7 +701,7 @@ export class MessagePipeline {
         }
       }
 
-      if (!forceFinal && state.calls >= MAX_TOOL_CALLS_PER_TURN) {
+      if (!forceFinal && state.calls >= maxToolCalls(channel)) {
         forceFinal = true;
         feedback += '\n\nYou have used all your tool calls for this turn. Answer the author now with what you have. Do not call another tool.';
       }

@@ -393,7 +393,8 @@ const findPlay = (id: string): Play | undefined => PLAYS.find(p => p.id === id);
 
 /**
  * The rules, in priority order. Every text is at most 220 characters.
- * Rules h and i offer a play and only run when `plays` is given.
+ * Rules h and i offer a play and only run when `plays` is given; rule j
+ * (connect the manuscript folder) needs the same context.
  */
 export function candidateNotices(s: UsageSummary, plays?: PlayRuleInput): NoticeCandidate[] {
   const out: NoticeCandidate[] = [];
@@ -513,6 +514,14 @@ export function candidateNotices(s: UsageSummary, plays?: PlayRuleInput): Notice
       out.push(playCandidate(triage, ctx,
         'Now that Google is connected, I can sum up your unread author mail from the last three days and draft replies for you to approve. Want me to?'));
     }
+
+    // j. A book Fibb knows about, and no manuscript folder connected. No action: it lives under Books.
+    if (s.bookTitle && ctx.hasManuscript === false) {
+      out.push({
+        key: 'manuscript:connect',
+        text: 'I can read your manuscript straight from its folder on this computer. Add it under Books and I can check it for you.',
+      });
+    }
   }
 
   return out;
@@ -609,6 +618,9 @@ export type RunPlayResult =
   | { ok: false; reason: 'not_found' | 'exists' | 'failed' }
   | { ok: false; reason: 'unavailable'; missing: PlayNeed };
 
+/** `hasManuscript` may be left out when it is not known (then nothing is said about it). */
+export interface NoticeCapabilities { hasGoogle: boolean; hasBrowser: boolean; hasManuscript?: boolean }
+
 export interface NoticeDeps {
   /** Gathers the raw activity. Called only when notices are enabled. */
   loadUsage: () => Promise<UsageInput>;
@@ -622,7 +634,7 @@ export interface NoticeDeps {
     list?: () => Array<{ name: string }>;
   };
   /** Which tools are ready right now. Omitted means neither. */
-  capabilities?: () => { hasGoogle: boolean; hasBrowser: boolean } | Promise<{ hasGoogle: boolean; hasBrowser: boolean }>;
+  capabilities?: () => NoticeCapabilities | Promise<NoticeCapabilities>;
   /** Just the saved facts (name, books). Falls back to loadUsage().facts. */
   loadFacts?: () => UsageInput['facts'] | Promise<UsageInput['facts']>;
   /** Cheapest model: (system, user) -> text. Omit to skip rewording. */
@@ -900,10 +912,12 @@ export class NoticeService {
     if (changed) await this.persist();
   }
 
-  private async capabilities(): Promise<{ hasGoogle: boolean; hasBrowser: boolean }> {
+  private async capabilities(): Promise<NoticeCapabilities> {
     try {
       const c = await this.deps.capabilities?.();
-      return { hasGoogle: c?.hasGoogle === true, hasBrowser: c?.hasBrowser === true };
+      const out: NoticeCapabilities = { hasGoogle: c?.hasGoogle === true, hasBrowser: c?.hasBrowser === true };
+      if (typeof c?.hasManuscript === 'boolean') out.hasManuscript = c.hasManuscript;
+      return out;
     } catch (err) {
       logger.debug('notice capabilities failed', err);
       return { hasGoogle: false, hasBrowser: false };

@@ -1,11 +1,17 @@
 /**
  * The tool shelf: tiny helper tools Fibb writes for the author (a bookmarklet,
- * a small unpacked Chrome extension, or a Google Apps Script for Docs).
+ * a small unpacked Chrome extension, a Google Apps Script for Docs, or a
+ * single-file page such as a sprint timer).
  *
  * Fibb asks the model for the code, then the static checker in
  * tool-shelf-check.ts decides whether it may be shown. A tool that fails the
  * check is never stored. Fibb never installs or runs a tool: the app shows the
  * code and a plain list of what it can touch.
+ *
+ * A page is the one kind the author opens straight from Fibb. It is stored
+ * exactly as the model wrote it (so it can be re-checked), and every copy that
+ * leaves the shelf goes through hardenPage(), which adds a
+ * Content-Security-Policy the model has no say in.
  *
  * Storage: <workspace>/tools/shelf.json, at most 40 tools, atomic writes.
  * Every read re-runs the checker, because the file could have been edited on
@@ -23,6 +29,7 @@ import {
   ALLOWED_WINDOW_MEMBERS, ALLOWED_DOCUMENT_MEMBERS, ALLOWED_CHROME_CALLS, ALLOWED_MANIFEST_KEYS,
   ALLOWED_PERMISSIONS, ALLOWED_APPS_SCRIPT_SERVICES, ALLOWED_UTILITIES, EXTENSION_FILE_TYPES,
   FORBIDDEN_NAMES, FORBIDDEN_SECRET_WORDS,
+  PAGE_TAGS, PAGE_CREATE_ELEMENTS, PAGE_ATTRS, PAGE_INPUT_TYPES, PAGE_ENTITIES, PAGE_STORAGE_CALLS, PAGE_ALLOWED_NAMES,
   type ToolKind, type ToolFile, type CheckResult,
 } from './tool-shelf-check.js';
 
@@ -54,7 +61,7 @@ export interface PublicTool {
   summary: string;
   access: string[];
   warnings: string[];
-  /** The code to copy: bookmarklets and Apps Scripts only. */
+  /** The code to copy: bookmarklets and Apps Scripts. For a page, the whole hardened HTML file. */
   code?: string;
   /** Extensions only. */
   files?: Array<{ path: string; size: number }>;
@@ -71,8 +78,40 @@ export interface ToolShelfDeps {
 
 export type CreateResult = { ok: true; tool: PublicTool } | { ok: false; error: string };
 export type ZipResult = { ok: true; buffer: Buffer; filename: string } | { ok: false; reason: 'not_found' | 'not_extension' };
+export type PageResult = { ok: true; html: string; filename: string } | { ok: false; reason: 'not_found' | 'not_page' };
 
-const SINGLE_FILE_PATH: Record<string, string> = { bookmarklet: 'bookmarklet.js', 'apps-script': 'code.gs' };
+const SINGLE_FILE_PATH: Record<string, string> = { bookmarklet: 'bookmarklet.js', 'apps-script': 'code.gs', page: 'page.html' };
+
+// ── Page hardening. Done by code, never by the model. ──
+
+/** What a page may do, wherever it is opened: no network, no forms, inline script and style only. */
+export const PAGE_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'";
+/** The tag Fibb puts first in <head>. It still applies when the file is saved and opened from disk. */
+export const PAGE_CSP_META = `<meta http-equiv="Content-Security-Policy" content="${PAGE_CSP}">`;
+/**
+ * The header Fibb serves a page with. "sandbox" gives the page an origin of
+ * its own, so it can never call Fibb's API as the author (and cannot use
+ * localStorage there); frame-ancestors lets only the Fibb app frame it.
+ */
+export const PAGE_CSP_HEADER = `sandbox allow-scripts allow-downloads; ${PAGE_CSP}; frame-ancestors 'self'`;
+
+/**
+ * Put Fibb's Content-Security-Policy first in <head> (making a <head> when
+ * there is none). Pure. The checker only passes pages that begin
+ * <!doctype html><html><head>, so for a stored page the first "<head>" is
+ * always the real one; the other branches are for completeness.
+ */
+export function hardenPage(html: string): string {
+  const text = String(html ?? '');
+  const after = (m: RegExpExecArray, insert: string) => text.slice(0, m.index + m[0].length) + insert + text.slice(m.index + m[0].length);
+  const head = /<head(?:\s[^<>]*)?>/i.exec(text);
+  if (head) return after(head, PAGE_CSP_META);
+  const root = /<html(?:\s[^<>]*)?>/i.exec(text);
+  if (root) return after(root, `<head>${PAGE_CSP_META}</head>`);
+  const doctype = /^\s*<!doctype[^<>]*>/i.exec(text);
+  if (doctype) return after(doctype, `<head>${PAGE_CSP_META}</head>`);
+  return `<head>${PAGE_CSP_META}</head>${text}`;
+}
 const OPEN_MARK = '<<<REQUEST';
 const CLOSE_MARK = 'REQUEST>>>';
 
@@ -80,8 +119,12 @@ const CLOSE_MARK = 'REQUEST>>>';
 export function inferKind(request: string): ToolKind {
   if (/\b(google\s+docs?|apps?\s*script|google\s+sheets?|google\s+slides)\b/i.test(request)) return 'apps-script';
   if (/\bextension\b/i.test(request)) return 'extension';
+  if (/\b(mini[\s-]?apps?|apps?|timers?|trackers?|calculators?|dashboards?|boards?|planners?)\b/i.test(request)) return 'page';
+  // "page" counts when the author wants one made, not when they mean the page they are reading.
+  if (/\bpages?\b/i.test(request) && !EXISTING_PAGE.test(request)) return 'page';
   return 'bookmarklet';
 }
+const EXISTING_PAGE = /\b(?:on|in|of|from|across|this|the|that|every|each|any|all|current)\s+(?:\w+\s+){0,2}pages?\b/i;
 
 /** True when the author clearly asked for a tool that runs on every page. */
 export function asksForAllPages(request: string): boolean {
@@ -133,11 +176,145 @@ export const TALLY_EXAMPLE = [
   '})();',
 ].join('\n');
 
+/** The worked example for a page. A test checks that it passes the safety checker. */
+export const SPRINT_TIMER_EXAMPLE = [
+  '<!doctype html>',
+  '<html lang="en">',
+  '<head>',
+  '<meta charset="utf-8">',
+  '<meta name="viewport" content="width=device-width, initial-scale=1">',
+  '<title>Sprint timer</title>',
+  '<style>',
+  '  :root { --accent: #7c83f7; --paper: #fbf8f3; --card: #ffffff; --ink: #2b2a33; --soft: #6f6c7a; --line: #e7e0d5; }',
+  '  @media (prefers-color-scheme: dark) {',
+  '    :root { --paper: #1b1a21; --card: #26252e; --ink: #eeebf6; --soft: #a9a6b8; --line: #3a3945; }',
+  '  }',
+  '  * { box-sizing: border-box; }',
+  '  body { margin: 0; padding: 24px 16px; background: var(--paper); color: var(--ink);',
+  '    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.5; }',
+  '  .card { max-width: 420px; margin: 0 auto; padding: 24px; background: var(--card);',
+  '    border: 1px solid var(--line); border-radius: 16px; }',
+  '  h1 { margin: 0 0 16px; font-size: 22px; }',
+  '  label { display: block; margin-bottom: 6px; color: var(--soft); font-size: 14px; }',
+  '  input { width: 100%; padding: 10px 12px; font: inherit; color: inherit; background: var(--paper);',
+  '    border: 1px solid var(--line); border-radius: 10px; }',
+  '  .clock { margin: 16px 0 8px; font-size: 56px; font-weight: 700; text-align: center; }',
+  '  progress { width: 100%; height: 10px; accent-color: var(--accent); }',
+  '  .row { display: flex; gap: 12px; margin-top: 16px; }',
+  '  button { flex: 1; padding: 12px; font: inherit; font-weight: 600; color: #ffffff; background: var(--accent);',
+  '    border: 0; border-radius: 10px; cursor: pointer; }',
+  '  button.quiet { color: var(--ink); background: transparent; border: 1px solid var(--line); }',
+  '  button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }',
+  '  .note { margin: 16px 0 0; color: var(--soft); font-size: 14px; text-align: center; }',
+  '</style>',
+  '</head>',
+  '<body>',
+  '<main class="card">',
+  '  <h1>Sprint timer</h1>',
+  '  <label for="minutes">Minutes for this sprint</label>',
+  '  <input id="minutes" type="number" min="1" max="120" value="25">',
+  '  <p id="clock" class="clock" role="timer">25:00</p>',
+  '  <progress id="bar" value="0" max="100" aria-label="Sprint progress"></progress>',
+  '  <div class="row">',
+  '    <button id="start" type="button">Start</button>',
+  '    <button id="reset" type="button" class="quiet">Reset</button>',
+  '  </div>',
+  '  <p id="note" class="note" aria-live="polite">Sprints finished: 0</p>',
+  '</main>',
+  '<script>',
+  '  // Find the parts of the page.',
+  "  const minutesBox = document.getElementById('minutes');",
+  "  const clock = document.getElementById('clock');",
+  "  const bar = document.getElementById('bar');",
+  "  const startButton = document.getElementById('start');",
+  "  const resetButton = document.getElementById('reset');",
+  "  const note = document.getElementById('note');",
+  '  let total = 25 * 60;',
+  '  let remaining = total;',
+  '  let ticking = null;',
+  '  let finished = 0;',
+  '',
+  '  // Saving can be switched off where the page is opened, so every use is wrapped.',
+  '  function loadFinished() {',
+  '    try {',
+  "      const saved = localStorage.getItem('fibb-sprints-finished');",
+  '      return saved ? Number(saved) || 0 : 0;',
+  '    } catch (err) {',
+  '      return 0;',
+  '    }',
+  '  }',
+  '  function saveFinished() {',
+  '    try {',
+  "      localStorage.setItem('fibb-sprints-finished', String(finished));",
+  '    } catch (err) {',
+  '      // The timer still works without saving.',
+  '    }',
+  '  }',
+  '',
+  '  // Show the time that is left as minutes and seconds.',
+  '  function show() {',
+  '    const minutes = Math.floor(remaining / 60);',
+  '    const seconds = remaining % 60;',
+  "    clock.textContent = String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');",
+  '    bar.value = total > 0 ? Math.round(((total - remaining) / total) * 100) : 0;',
+  "    note.textContent = 'Sprints finished: ' + finished;",
+  '  }',
+  '  function readMinutes() {',
+  '    const typed = Math.round(Number(minutesBox.value));',
+  '    return Math.min(120, Math.max(1, typed || 25));',
+  '  }',
+  '  function pause() {',
+  '    if (ticking !== null) { clearInterval(ticking); }',
+  '    ticking = null;',
+  "    startButton.textContent = 'Start';",
+  '  }',
+  '  function tick() {',
+  '    remaining -= 1;',
+  '    if (remaining <= 0) {',
+  '      remaining = 0;',
+  '      finished += 1;',
+  '      saveFinished();',
+  '      pause();',
+  '    }',
+  '    show();',
+  '  }',
+  '  function restart() {',
+  '    total = readMinutes() * 60;',
+  '    remaining = total;',
+  '  }',
+  '',
+  "  startButton.addEventListener('click', function () {",
+  '    if (ticking !== null) { pause(); return; }',
+  '    if (remaining <= 0) { restart(); }',
+  '    ticking = setInterval(tick, 1000);',
+  "    startButton.textContent = 'Pause';",
+  '    show();',
+  '  });',
+  "  resetButton.addEventListener('click', function () {",
+  '    pause();',
+  '    restart();',
+  '    show();',
+  '  });',
+  "  minutesBox.addEventListener('change', function () {",
+  '    if (ticking === null) { restart(); show(); }',
+  '  });',
+  '',
+  '  finished = loadFinished();',
+  '  show();',
+  '</script>',
+  '</body>',
+  '</html>',
+].join('\n');
+
 export function buildToolPrompt(kind: ToolKind, allowAllPages = false): string {
   const limit = LIMITS[kind];
   const kb = (n: number) => `${Math.round(n / 1024)} KB`;
+  const page = kind === 'page';
+  const names = (xs: readonly string[]) => (page ? xs.filter(x => !PAGE_ALLOWED_NAMES.includes(x)) : xs);
   const common = [
-    'You write one tiny helper tool for an author who is not technical. Fibb only shows the code to the author; Fibb never runs it.',
+    page
+      ? 'You write one tiny helper tool for an author who is not technical: a single web page they open in their browser. Fibb adds its own protections to the page and the author opens it; you never add protections yourself.'
+      : 'You write one tiny helper tool for an author who is not technical. Fibb only shows the code to the author; Fibb never runs it.',
     'A strict safety checker reads your code first and refuses anything outside the rules below, so follow every rule exactly. When a rule and the request disagree, the rule wins.',
     '',
     'Reply with one JSON object and nothing else:',
@@ -147,15 +324,19 @@ export function buildToolPrompt(kind: ToolKind, allowAllPages = false): string {
     '',
     'Rules for all code:',
     '- Readable code, never minified. Short lines, short comments that say what each part does.',
-    '- Nothing may contact the internet, store anything, read secrets or run text as code.',
-    `- These names are refused anywhere, even in comments and text: ${list([...FORBIDDEN_NAMES.network, ...FORBIDDEN_NAMES.html, ...FORBIDDEN_NAMES.dynamic, ...FORBIDDEN_NAMES.secrets, ...FORBIDDEN_NAMES.escape, ...FORBIDDEN_NAMES.acting])}.`,
+    page
+      ? '- Nothing may contact the internet, go to another address, open a window, read secrets or run text as code.'
+      : '- Nothing may contact the internet, store anything, read secrets or run text as code.',
+    `- These names are refused anywhere, even in comments and text: ${list(names([...FORBIDDEN_NAMES.network, ...FORBIDDEN_NAMES.html, ...FORBIDDEN_NAMES.dynamic, ...FORBIDDEN_NAMES.secrets, ...FORBIDDEN_NAMES.escape, ...FORBIDDEN_NAMES.acting]))}.`,
     `- These words are refused anywhere, in any letter case, even inside longer words: ${list(FORBIDDEN_SECRET_WORDS)}.`,
     '- No web addresses or anything that looks like one (no http, https, ws, data, blob or javascript addresses, no "//" inside text), no url( and no @import.',
     '- No \\u or \\x escapes. Inside text only these escapes: \\n \\t \\\' \\" \\\\.',
-    '- Put text on the page with textContent. Never write HTML as text.',
-    `- Create elements only as document.createElement('name') with the name written in place, one of: ${list(ALLOWED_ELEMENTS)}.`,
-    `- Style one property at a time, el.style.color = '...'. Allowed properties: ${list(ALLOWED_STYLE_PROPS)}.`,
-    "- A style element is allowed only in exactly this form: const sheet = document.createElement('style'); sheet.textContent = 'fixed text written in place'; document.head.appendChild(sheet);",
+    page ? '- In the script, put text on the page with textContent. Never write HTML as text inside the script.' : '- Put text on the page with textContent. Never write HTML as text.',
+    `- Create elements only as document.createElement('name') with the name written in place, one of: ${list(page ? PAGE_CREATE_ELEMENTS : ALLOWED_ELEMENTS)}.`,
+    page
+      ? `- Prefer CSS classes from the <style> block (el.classList.add). To style from the script, one property at a time, el.style.color = '...'. Allowed properties: ${list(ALLOWED_STYLE_PROPS)}.`
+      : `- Style one property at a time, el.style.color = '...'. Allowed properties: ${list(ALLOWED_STYLE_PROPS)}.`,
+    ...(page ? [] : ["- A style element is allowed only in exactly this form: const sheet = document.createElement('style'); sheet.textContent = 'fixed text written in place'; document.head.appendChild(sheet);"]),
     `- window may only be used as window.name with one of: ${list(ALLOWED_WINDOW_MEMBERS)}.`,
     `- document may only be used as document.name with one of: ${list(ALLOWED_DOCUMENT_MEMBERS)}.`,
     '- navigator may only be used as navigator.clipboard.writeText(text).',
@@ -188,6 +369,27 @@ export function buildToolPrompt(kind: ToolKind, allowAllPages = false): string {
       '- HTML files: no script written inside the page, no inline event handlers (onclick and so on), no images, links, forms or frames. Load code only as <script src="file-in-the-tool.js"></script> and styles only as <link rel="stylesheet" href="file-in-the-tool.css">.',
       '- CSS files: no url(, no @import, no @font-face, no backslashes.',
       `- The only chrome APIs allowed: ${list(ALLOWED_CHROME_CALLS)}. With executeScript use func: aNamedFunction, or files: ['a-file-in-the-tool.js'].`,
+    );
+  } else if (kind === 'page') {
+    specific.push(
+      'This tool is a page: one self-contained HTML file with its own style and script.',
+      `- files: exactly one file, path "page.html", at most ${kb(limit.fileBytes)}.`,
+      '- Begin exactly with <!doctype html>, then <html lang="en">, then <head>. Write "<head" nowhere else, not even in a comment.',
+      '- In <head>: <meta charset="utf-8">, the viewport meta, a <title> and one <style>. No other meta tags of any kind (no http-equiv: Fibb adds the protections).',
+      '- Exactly one <script>, the last thing in <body>. Write <script> and <style> with no attributes.',
+      `- Tags allowed in the markup: ${list(PAGE_TAGS)}.`,
+      '- Never: a (links), form, img, picture, svg, iframe, frame, object, embed, link, base, audio, video, template. Use buttons and inputs with addEventListener instead of a form.',
+      `- Attributes allowed: ${list(PAGE_ATTRS)}, aria-*, data-*. Write each as name="value". Nothing that takes an address (no src, href, action, srcset, target, download) and no inline handlers (no onclick and so on).`,
+      `- input type may only be: ${list(PAGE_INPUT_TYPES)}.`,
+      `- No HTML comments. In visible text write &lt; &gt; &amp; for those characters; the only character codes allowed are ${PAGE_ENTITIES.map(e => `&${e};`).join(' ')}.`,
+      '- CSS only inside the <style> block or style="" attributes: no url(, no @import, no @font-face, no backslashes, no "//". No images at all, so draw with CSS shapes, borders and plain characters.',
+      `- Saving: the page may keep its own notes with ${PAGE_STORAGE_CALLS.map(c => `localStorage.${c}('a-key-written-in-place', ...)`).join(', ')} and nothing else. Saving is switched off in some places the page is opened, so wrap every localStorage call in try { } catch (err) { } and make the page work fully without it. Store text made with JSON.stringify and read it with JSON.parse inside the same try.`,
+      '- Copying: navigator.clipboard.writeText(text) is allowed; add .catch(function () { }) because it can be refused.',
+      '- There is no way to save a file, print, open a link or show a pop-up (alert, confirm and prompt do nothing here). Show results on the page itself; for export, show the text in a textarea with a Copy button.',
+      '- Look: a clean, calm page. System font stack (system-ui, -apple-system, "Segoe UI", Roboto, sans-serif), comfortable spacing, rounded cards, a soft periwinkle accent (#7c83f7) on a cream background (#fbf8f3), with dark colors under @media (prefers-color-scheme: dark). No external fonts or images.',
+      '- Mobile friendly: the viewport meta, a single column that fits a narrow screen, large touch targets. Accessible: every input has a <label for="...">, buttons have clear words, focus is visible, and aria-live is used for results that change.',
+      'A complete example that follows every rule (note the try/catch around saving, the single script, and the function name handed to setInterval):',
+      SPRINT_TIMER_EXAMPLE,
     );
   } else {
     specific.push(
@@ -267,6 +469,8 @@ function toPublic(t: StoredTool): PublicTool {
     access: [...t.access], warnings: [...t.warnings], createdAt: t.createdAt,
   };
   if (t.kind === 'extension') out.files = t.files.map(f => ({ path: f.path, size: Buffer.byteLength(f.content, 'utf8') }));
+  // A page is only ever handed out with Fibb's Content-Security-Policy in it.
+  else if (t.kind === 'page') out.code = hardenPage(t.files[0].content);
   else out.code = t.files[0].content;
   return out;
 }
@@ -304,7 +508,7 @@ export class ToolShelf {
       return { ok: false, error: `Tell Fibb what the tool should do in ${MIN_REQUEST} to ${MAX_REQUEST} characters.` };
     }
     if (input.kind !== undefined && !TOOL_KINDS.includes(input.kind as ToolKind)) {
-      return { ok: false, error: 'Pick a bookmark tool, a Chrome extension or a Google Docs script.' };
+      return { ok: false, error: 'Pick a bookmark tool, a Chrome extension, a Google Docs script or a page.' };
     }
     const kind = (input.kind as ToolKind | undefined) ?? inferKind(request);
 
@@ -392,6 +596,20 @@ export class ToolShelf {
     const zip = new AdmZip();
     for (const f of t.files) zip.addFile(`${slug}/${f.path}`, Buffer.from(f.content, 'utf8'));
     return { ok: true, buffer: zip.toBuffer(), filename: `${slug}.zip` };
+  }
+
+  /**
+   * A page, ready to open or save: re-checked (load() drops anything that no
+   * longer passes) and with Fibb's Content-Security-Policy added.
+   */
+  async page(id: string): Promise<PageResult> {
+    const t = (await this.load()).find(x => x.id === id);
+    if (!t) return { ok: false, reason: 'not_found' };
+    if (t.kind !== 'page') return { ok: false, reason: 'not_page' };
+    const html = hardenPage(t.files[0].content);
+    // Never hand out a page without the policy, whatever happened above.
+    if (!html.includes(PAGE_CSP_META)) return { ok: false, reason: 'not_found' };
+    return { ok: true, html, filename: `${toolSlug(t.name)}.html` };
   }
 
   // ── Storage ──

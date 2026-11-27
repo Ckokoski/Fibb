@@ -5,11 +5,11 @@ import { CommandBar, type Command } from './components/CommandBar';
 import { cue } from './lib/sound';
 import { IdeasView, TasksView } from './components/Work';
 import { ToolsView } from './components/ToolsView';
+import { BooksView } from './components/BooksView';
 import { groupTasks, useWork } from './lib/tasks';
 import { TonightSheet } from './components/TonightSheet';
 import { TonightDrawer } from './components/TonightDrawer';
 import { SettingsView } from './components/SettingsView';
-import { EmptyState } from './components/EmptyState';
 import { Hero } from './components/Hero';
 import { IconButton, Icons } from './components/IconButton';
 import { applyTheme, cycleTheme, getTheme, type Theme } from './lib/theme';
@@ -153,7 +153,7 @@ export function App() {
               onBusy={setBusy} onSpeaking={setSpeaking} onListening={setListening} onCelebrate={celebrate} onOpenTonight={() => setTonight(true)} />
           </div>
           {view === 'settings' && <SettingsView companion={companion} onCompanionChanged={loadCompanion} />}
-          {view === 'books' && <EmptyState title="No books yet" text="Tell Fibb what you're writing and it will keep the bible, the chapters, and the goal here." action="Start in chat" onAction={() => setView('chat')} />}
+          {view === 'books' && <BooksView />}
           {view === 'ideas' && <IdeasView tasks={work.tasks} reload={work.reload} onChat={() => setView('chat')} />}
           {view === 'tools' && <ToolsView />}
           {view === 'tasks' && <TasksView tasks={work.tasks} approvals={work.approvals} reload={work.reload} onSay={say} />}

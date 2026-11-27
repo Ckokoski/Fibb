@@ -141,6 +141,7 @@ export class ImageGenService {
   // so we try several known names and cache the first one that works on the
   // user's key. New names get added as Google releases them.
   private static readonly GEMINI_IMAGE_CANDIDATES = [
+    'gemini-3.1-flash-image',                    // current (2026)
     'gemini-2.5-flash-image',                    // stable promotion (Nov 2025+)
     'gemini-2.5-flash-image-preview',            // public preview slug
     'gemini-2.0-flash-preview-image-generation', // older preview slug

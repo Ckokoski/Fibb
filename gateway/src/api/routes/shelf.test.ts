@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync } from 'fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import AdmZip from 'adm-zip';
 import { registerShelfRoutes } from './shelf.js';
-import { ToolShelf } from '../../services/tool-shelf.js';
-import { createRateLimiter } from '../../security/request-guard.js';
+import { ToolShelf, SPRINT_TIMER_EXAMPLE, PAGE_CSP_META, hardenPage } from '../../services/tool-shelf.js';
+import { createRateLimiter, evaluateRequest } from '../../security/request-guard.js';
 
 type Handler = (req: any, res: any) => any;
 
@@ -61,7 +61,9 @@ describe('shelf routes', () => {
       expect(r.code, key).toBe(503);
       expect(r.body.error).toBeTruthy();
     }
-    expect([...bare.routes.keys()].sort()).toEqual(['DELETE /api/shelf/:id', 'GET /api/shelf', 'GET /api/shelf/:id/download', 'POST /api/shelf']);
+    expect([...bare.routes.keys()].sort()).toEqual([
+      'DELETE /api/shelf/:id', 'GET /api/shelf', 'GET /api/shelf/:id/download', 'GET /api/shelf/:id/page', 'GET /api/shelf/:id/page/download', 'POST /api/shelf',
+    ]);
   });
 
   it('POST creates (201) and GET lists; the request text is never returned', async () => {
@@ -138,9 +140,108 @@ describe('shelf routes', () => {
     expect(names).toEqual(['calm-reading-now/calm.js', 'calm-reading-now/manifest.json']);
   });
 
+  describe('pages', () => {
+    const PAGE = JSON.stringify({ name: 'Sprint "Timer" 25', summary: 'Counts down a writing sprint.', files: [{ path: 'x.html', content: SPRINT_TIMER_EXAMPLE }] });
+    const CSP = "sandbox allow-scripts allow-downloads; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'; frame-ancestors 'self'";
+    const META = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'">`;
+    const make = async () => {
+      replies = [PAGE];
+      const r = await h.call('POST /api/shelf', { body: { request: 'A writing sprint timer with a start button.', kind: 'page' } });
+      expect(r.code).toBe(201);
+      return r.body.tool;
+    };
+
+    it('POST makes a page whose code already carries the policy; a kind is guessed from "timer"', async () => {
+      const tool = await make();
+      expect(Object.keys(tool).sort()).toEqual(['access', 'code', 'createdAt', 'id', 'kind', 'name', 'summary', 'warnings']);
+      expect(tool.kind).toBe('page');
+      expect(tool.code).toBe(hardenPage(SPRINT_TIMER_EXAMPLE));
+      expect(tool.code).toContain(`<head>${META}`);
+      expect(tool.access).toEqual(['Runs only in its own tab', 'Can save its own notes in this browser', 'Sends nothing anywhere']);
+      replies = [PAGE];
+      const guessed = await h.call('POST /api/shelf', { body: { request: 'A writing sprint timer with a start button.' } });
+      expect(guessed.body.tool.kind).toBe('page');
+    });
+
+    it('GET /page serves the hardened page with the sandbox policy', async () => {
+      const tool = await make();
+      const r = await h.call('GET /api/shelf/:id/page', { params: { id: tool.id } });
+      expect(r.code).toBe(200);
+      expect(r.headers).toEqual({
+        'content-type': 'text/html; charset=utf-8',
+        'content-security-policy': CSP,
+        'x-frame-options': 'SAMEORIGIN',
+        'x-content-type-options': 'nosniff',
+        'cache-control': 'no-store',
+      });
+      expect(typeof r.sent).toBe('string');
+      expect(r.sent).toBe(hardenPage(SPRINT_TIMER_EXAMPLE));
+      expect(r.sent.startsWith(`<!doctype html>\n<html lang="en">\n<head>${META}\n<meta charset="utf-8">`)).toBe(true);
+      expect(r.sent.split('Content-Security-Policy')).toHaveLength(2);
+      expect(PAGE_CSP_META).toBe(META);
+    });
+
+    it('GET /page/download sends the same page as an attachment named after the tool', async () => {
+      const tool = await make();
+      const open = await h.call('GET /api/shelf/:id/page', { params: { id: tool.id } });
+      const r = await h.call('GET /api/shelf/:id/page/download', { params: { id: tool.id } });
+      expect(r.code).toBe(200);
+      expect(r.sent).toBe(open.sent);
+      expect(r.sent).toContain(META);
+      expect(r.headers['content-disposition']).toBe('attachment; filename="sprint-timer-25.html"');
+      expect(r.headers['content-type']).toBe('text/html; charset=utf-8');
+      expect(r.headers['content-security-policy']).toBe(CSP);
+      expect(r.headers['x-content-type-options']).toBe('nosniff');
+      expect(r.headers['cache-control']).toBe('no-store');
+    });
+
+    it('404 for an unknown id, 400 for a tool that is not a page, and the zip route stays for extensions', async () => {
+      const tool = await make();
+      replies = [MARK];
+      const mark = await h.call('POST /api/shelf', { body: { request: REQUEST, kind: 'bookmarklet' } });
+      for (const key of ['GET /api/shelf/:id/page', 'GET /api/shelf/:id/page/download']) {
+        const unknown = await h.call(key, { params: { id: 'nope' } });
+        expect(unknown.code, key).toBe(404);
+        expect(unknown.sent).toBeUndefined();
+        const notPage = await h.call(key, { params: { id: mark.body.tool.id } });
+        expect(notPage.code, key).toBe(400);
+        expect(notPage.body).toEqual({ error: 'Only pages can be opened this way' });
+        expect(notPage.sent).toBeUndefined();
+        expect(notPage.headers['content-security-policy']).toBeUndefined();
+      }
+      expect((await h.call('GET /api/shelf/:id/download', { params: { id: tool.id } })).code).toBe(400);
+    });
+
+    it('the request guard, unchanged, lets the app open or frame a page and refuses calls from the page itself', () => {
+      const opts = { port: 3847 };
+      const nav = { method: 'GET', path: '/api/shelf/abc/page', host: 'localhost:3847' };
+      // A frame or a link inside the Fibb app, and the address typed by hand.
+      expect(evaluateRequest({ ...nav, secFetchSite: 'same-origin', secFetchMode: 'navigate' }, opts).ok).toBe(true);
+      expect(evaluateRequest({ ...nav, secFetchSite: 'none', secFetchMode: 'navigate' }, opts).ok).toBe(true);
+      // Another site pulling the page in as a subresource.
+      expect(evaluateRequest({ ...nav, secFetchSite: 'cross-site', secFetchMode: 'no-cors' }, opts).ok).toBe(false);
+      // The sandboxed page has no origin of Fibb's: anything it sent would say "Origin: null".
+      expect(evaluateRequest({ method: 'GET', path: '/api/shelf', host: 'localhost:3847', origin: 'null', secFetchSite: 'cross-site', secFetchMode: 'cors' }, opts).ok).toBe(false);
+      expect(evaluateRequest({ method: 'POST', path: '/api/shelf', host: 'localhost:3847', origin: 'null', contentType: 'application/json' }, opts).ok).toBe(false);
+    });
+
+    it('a stored page that no longer passes the check is not served', async () => {
+      const tool = await make();
+      const file = join(dir, 'tools', 'shelf.json');
+      const data = JSON.parse(readFileSync(file, 'utf-8'));
+      data.tools[0].files[0].content = SPRINT_TIMER_EXAMPLE.replace('<main class="card">', '<main class="card"><img src="/api/vault">');
+      writeFileSync(file, JSON.stringify(data));
+      for (const key of ['GET /api/shelf/:id/page', 'GET /api/shelf/:id/page/download']) {
+        const r = await h.call(key, { params: { id: tool.id } });
+        expect(r.code, key).toBe(404);
+        expect(r.sent).toBeUndefined();
+      }
+    });
+  });
+
   it('a failing service is a 500 with a fixed message', async () => {
     const boom = async () => { throw new Error('C:\\secret\\path exploded'); };
-    const broken = harness({ toolShelf: { list: boom, create: boom, remove: boom, zip: boom } });
+    const broken = harness({ toolShelf: { list: boom, create: boom, remove: boom, zip: boom, page: boom } });
     for (const key of broken.routes.keys()) {
       const r = await broken.call(key, { params: { id: 'x' }, body: { request: REQUEST } });
       expect(r.code, key).toBe(500);

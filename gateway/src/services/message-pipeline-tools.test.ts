@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MessagePipeline, MAX_TOOL_CALLS_PER_TURN } from './message-pipeline.js';
+import { MessagePipeline, MAX_TOOL_CALLS_PER_TURN, MAX_TOOL_CALLS_NIGHT_SHIFT, maxToolCalls } from './message-pipeline.js';
 import { ToolRegistry, type Tool } from './tools/registry.js';
 import type { ServiceContainer } from './container.js';
 
@@ -140,6 +140,39 @@ describe('pipeline tool loop', () => {
     expect(r.final).toMatch(/ran out of steps/);
     expect(r.chunks.join('')).toBe(r.final);
     expect(r.final).not.toContain('<tool>');
+  });
+
+  it('the night shift gets 24 tool calls a turn; interactive channels stay at 6', async () => {
+    expect(MAX_TOOL_CALLS_PER_TURN).toBe(6);
+    expect(MAX_TOOL_CALLS_NIGHT_SHIFT).toBe(24);
+    expect(maxToolCalls('night-shift')).toBe(24);
+    for (const channel of ['webchat', 'telegram:42', 'api', 'night-shift-2']) expect(maxToolCalls(channel)).toBe(6);
+
+    const night = makeDeps([CALL], { tools: [readTool] }); // the model never stops calling
+    const r = await run(night, 'night-shift');
+    expect(night.calls.executed).toHaveLength(24);
+    expect(night.calls.reqs).toHaveLength(25);
+    const last = night.calls.reqs[24];
+    expect(last.system).not.toContain('# Tools');
+    expect(last.messages[last.messages.length - 1].content).toMatch(/used all your tool calls/);
+    expect(r.final).toMatch(/ran out of steps/);
+
+    const chat = makeDeps([CALL], { tools: [readTool] });
+    await run(chat, 'telegram:42');
+    expect(chat.calls.executed).toHaveLength(6);
+  });
+
+  it('a tool summary can depend on the call: "Reading chapter 7…"', async () => {
+    const reader: Tool = {
+      name: 'book_read', description: 'Read a chapter.', args: '{"chapter": 1}', risk: 'read', available: () => true,
+      summary: (a) => `Reading chapter ${a.chapter}…`, run: async () => 'text',
+    };
+    const d = makeDeps(['<tool>{"name":"book_read","args":{"chapter":7}}</tool>', 'Done.'], { tools: [reader] });
+    const r = await run(d);
+    expect(r.events).toEqual([
+      { name: 'book_read', status: 'start', summary: 'Reading chapter 7…' },
+      { name: 'book_read', status: 'done', summary: 'Reading chapter 7…' },
+    ]);
   });
 
   it('answers normally after exactly six calls', async () => {

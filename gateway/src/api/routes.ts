@@ -47,6 +47,7 @@ import { registerTaskRoutes } from './routes/tasks.js';
 import { registerConnectorRoutes } from './routes/connectors.js';
 import { registerMcpRoutes } from './routes/mcp.js';
 import { registerNoticeRoutes } from './routes/notices.js';
+import { registerBookRoutes } from './routes/books.js';
 import { registerPlaybookRoutes } from './routes/playbook.js';
 import { registerShelfRoutes } from './routes/shelf.js';
 
@@ -83,6 +84,7 @@ export function createAPIRoutes(app: Application, gateway: any, rootDir?: string
   registerConnectorRoutes(ctx);
   registerMcpRoutes(ctx);
   registerNoticeRoutes(ctx);
+  registerBookRoutes(ctx);
   registerPlaybookRoutes(ctx);
   registerShelfRoutes(ctx);
 }

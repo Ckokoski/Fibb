@@ -71,6 +71,7 @@ import { RevisionOrchestrator } from './revision-orchestrator.js';
 import { LearningService } from './learning.js';
 import { ConfirmationGateService } from './confirmation-gate.js';
 import { TaskStore } from './tasks.js';
+import { ManuscriptLibrary } from './manuscripts.js';
 import { NightShift } from './night-shift.js';
 import { NoticeService } from './notices.js';
 import { ToolShelf } from './tool-shelf.js';
@@ -136,6 +137,7 @@ export interface GatewayServices {
   learning: LearningService;
   confirmationGate: ConfirmationGateService;
   tasks: TaskStore;
+  manuscripts: ManuscriptLibrary;
   nightShift: NightShift;
   notices: NoticeService;
   toolShelf: ToolShelf;
@@ -214,6 +216,7 @@ export class ServiceContainer {
   learning!: LearningService;
   confirmationGate!: ConfirmationGateService;
   tasks!: TaskStore;
+  manuscripts!: ManuscriptLibrary;
   nightShift!: NightShift;
   notices!: NoticeService;
   toolShelf!: ToolShelf;
@@ -280,6 +283,7 @@ export class ServiceContainer {
       learning: this.learning,
       confirmationGate: this.confirmationGate,
       tasks: this.tasks,
+      manuscripts: this.manuscripts,
       nightShift: this.nightShift,
       notices: this.notices,
       toolShelf: this.toolShelf,

@@ -126,7 +126,9 @@ export class ToolRunner {
       let flagged = false;
       try { flagged = this.deps.injection.detect(raw).detected === true; } catch { flagged = false; }
       if (turn) {
-        if (tool.source) turn.untrusted = true;
+        // The author's own manuscript is not outside content; a flagged
+        // result still marks the turn below.
+        if (tool.source && tool.source !== 'manuscript') turn.untrusted = true;
         if (flagged) turn.flagged = true;
       }
       this.audit('run', { ...base, risk: 'read', ok: true, flagged, resultLength: raw.length });

@@ -20,6 +20,7 @@ import type { ApiContext } from '../context.js';
 const WHENS = ['tonight', 'now'];
 const MISSING_TEXT: Record<string, string> = {
   book: 'Tell Fibb about your book first, then try again.',
+  manuscript: 'Add your book folder first, then try again.',
   google: 'Connect Google first, then try again.',
   browser: 'Fibb needs a browser for this one. Install Edge or Chrome, then try again.',
 };

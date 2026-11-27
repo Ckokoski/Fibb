@@ -162,7 +162,7 @@ interface ProviderDefault {
 
 const PROVIDER_DEFAULTS: Record<string, ProviderDefault> = {
   ollama:     { defaultModel: 'llama3.2',                       tier: 'free',  costPer1kInput: 0,       costPer1kOutput: 0 },
-  gemini:     { defaultModel: 'gemini-2.5-flash',              tier: 'free',  costPer1kInput: 0,       costPer1kOutput: 0 },
+  gemini:     { defaultModel: 'gemini-flash-latest',             tier: 'free',  costPer1kInput: 0,       costPer1kOutput: 0 },
   deepseek:   { defaultModel: 'deepseek-chat',                 tier: 'cheap', costPer1kInput: 0.00014, costPer1kOutput: 0.00028 },
   claude:     { defaultModel: 'claude-sonnet-4-5-20250929',    tier: 'paid',  costPer1kInput: 0.003,   costPer1kOutput: 0.015 },
   openai:     { defaultModel: 'gpt-4o',                        tier: 'paid',  costPer1kInput: 0.0025,  costPer1kOutput: 0.01 },
@@ -174,7 +174,7 @@ const PROVIDER_DEFAULTS: Record<string, ProviderDefault> = {
  *  not a whitelist. Includes future models (fable-5, opus-4-8, gpt-5, etc.). */
 export const KNOWN_MODELS: Record<string, string[]> = {
   ollama:   ['llama3.2', 'llama3.1:8b-instruct-q4_K_M', 'mistral', 'qwen2.5'],
-  gemini:   ['gemini-2.5-flash', 'gemini-2.5-pro'],
+  gemini:   ['gemini-flash-latest', 'gemini-pro-latest', 'gemini-flash-lite-latest'],
   deepseek: ['deepseek-chat', 'deepseek-reasoner'],
   claude:   ['claude-sonnet-4-5-20250929', 'claude-sonnet-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-fable-5', 'claude-haiku-4-5'],
   openai:   ['gpt-4o', 'gpt-4o-mini', 'gpt-5', 'gpt-5-mini', 'o3', 'o4-mini'],
@@ -184,6 +184,26 @@ export const KNOWN_MODELS: Record<string, string[]> = {
 // ═══════════════════════════════════════════════════════════
 // AI Router
 // ═══════════════════════════════════════════════════════════
+
+/** Local models Fibb prefers when the configured one is missing, best first. */
+const OLLAMA_PREFERRED = ['gemma4', 'gemma3', 'llama3.3', 'llama3.2', 'llama3.1', 'qwen3', 'qwen2.5', 'mistral', 'gemma2'];
+
+/**
+ * Choose the Ollama model to use. Keeps the wanted model when it is installed,
+ * otherwise falls back to the best installed local model so Ollama works with
+ * no setup. Hosted ":cloud" entries are skipped: they are not local or free.
+ */
+export function pickOllamaModel(wanted: string, installed: string[]): string {
+  const has = (name: string) => installed.find(i => i === name || i === `${name}:latest` || (!name.includes(':') && i.startsWith(`${name}:`)));
+  const exact = has(wanted);
+  if (exact) return exact === `${wanted}:latest` ? wanted : exact;
+  const local = installed.filter(i => !/[:-]cloud$/.test(i));
+  for (const pref of OLLAMA_PREFERRED) {
+    const hit = local.find(i => i === pref || i.startsWith(`${pref}:`));
+    if (hit) return hit;
+  }
+  return local[0] || wanted;
+}
 
 export class AIRouter {
   private providers: Map<string, AIProvider> = new Map();
@@ -249,11 +269,13 @@ export class AIRouter {
 
     // ── Ollama (FREE - Local) ──
     if (this.config.ollama?.enabled !== false) {
-      const ollamaAvailable = await this.checkOllama(
+      const installed = await this.checkOllama(
         this.config.ollama?.endpoint || 'http://localhost:11434'
       );
-      if (ollamaAvailable) {
-        const model = this.resolveModel('ollama', PROVIDER_DEFAULTS.ollama.defaultModel);
+      if (installed) {
+        const wanted = this.resolveModel('ollama', PROVIDER_DEFAULTS.ollama.defaultModel);
+        const model = pickOllamaModel(wanted, installed);
+        if (model !== wanted) log.info(`Ollama model "${wanted}" is not installed; using "${model}" instead.`);
         const price = this.priceFor('ollama', model);
         this.providers.set('ollama', {
           id: 'ollama',
@@ -451,14 +473,17 @@ export class AIRouter {
     });
   }
 
-  private async checkOllama(endpoint: string): Promise<boolean> {
+  /** Names of the models Ollama has installed, or null when Ollama is not running. */
+  private async checkOllama(endpoint: string): Promise<string[] | null> {
     try {
       const response = await fetch(`${endpoint}/api/tags`, {
         signal: AbortSignal.timeout(3000),
       });
-      return response.ok;
+      if (!response.ok) return null;
+      const body: any = await response.json().catch(() => ({}));
+      return Array.isArray(body?.models) ? body.models.map((m: any) => String(m?.name || '')).filter(Boolean) : [];
     } catch {
-      return false;
+      return null;
     }
   }
 
@@ -534,7 +559,8 @@ export class AIRouter {
       if (provider.tier === 'free') freeProviders.push(provider);
       else paidProviders.push(provider);
     }
-    if (freeProviders.length > 0) return freeProviders[0];
+    // Local Ollama is the slowest free option, so it is the last free resort.
+    if (freeProviders.length > 0) return freeProviders.find(p => p.id !== 'ollama') ?? freeProviders[0];
     if (overBudget) return null; // Over budget and no free provider — fail closed.
     return paidProviders[0] ?? null;
   }
@@ -1075,9 +1101,13 @@ export class AIRouter {
     };
   }
 
-  /** First available provider in cheapest-first order, or null. */
+  /**
+   * First available provider in cheapest-first order, or null. Gemini's free
+   * tier comes before local Ollama: both cost nothing, but a local model on an
+   * ordinary computer is far slower, so it is the backup rather than the default.
+   */
   getCheapestAvailableProviderId(): string | null {
-    for (const id of ['ollama', 'gemini', 'deepseek', 'openrouter', 'openai', 'claude']) {
+    for (const id of ['gemini', 'ollama', 'deepseek', 'openrouter', 'openai', 'claude']) {
       if (this.providers.get(id)?.available) return id;
     }
     return null;
