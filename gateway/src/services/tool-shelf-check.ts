@@ -25,8 +25,8 @@
  * file for what it cannot see.
  */
 
-export type ToolKind = 'bookmarklet' | 'extension' | 'apps-script';
-export const TOOL_KINDS: ToolKind[] = ['bookmarklet', 'extension', 'apps-script'];
+export type ToolKind = 'bookmarklet' | 'extension' | 'apps-script' | 'page';
+export const TOOL_KINDS: ToolKind[] = ['bookmarklet', 'extension', 'apps-script', 'page'];
 
 export interface ToolFile { path: string; content: string }
 export interface CheckOptions {
@@ -51,6 +51,7 @@ export const LIMITS: Record<ToolKind, { files: number; fileBytes: number; totalB
   bookmarklet: { files: 1, fileBytes: 6 * 1024, totalBytes: 6 * 1024 },
   extension: { files: 6, fileBytes: 20 * 1024, totalBytes: 60 * 1024 },
   'apps-script': { files: 1, fileBytes: 20 * 1024, totalBytes: 20 * 1024 },
+  page: { files: 1, fileBytes: 40 * 1024, totalBytes: 40 * 1024 },
 };
 export const MAX_LINE_CHARS = 2000;
 
@@ -88,6 +89,34 @@ export const ALLOWED_PERMISSIONS = ['activeTab', 'scripting'];
 export const ALLOWED_APPS_SCRIPT_SERVICES = ['DocumentApp', 'SpreadsheetApp', 'SlidesApp', 'Utilities', 'Logger', 'console', 'HtmlService'];
 export const ALLOWED_UTILITIES = ['formatDate', 'formatString'];
 export const EXTENSION_FILE_TYPES = ['.json', '.js', '.html', '.css'];
+
+// A page (kind "page") is one self-contained HTML file. It has its own, wider lists.
+/** Tags that may be written in a page's markup. No links, frames, forms, images or anything else that takes an address. */
+export const PAGE_TAGS = [
+  'html', 'head', 'body', 'meta', 'title', 'script',
+  ...ALLOWED_ELEMENTS,
+  'input', 'textarea', 'select', 'option', 'optgroup', 'label', 'fieldset', 'legend', 'output',
+  'main', 'section', 'header', 'footer', 'nav', 'article', 'aside', 'details', 'summary',
+  'progress', 'meter', 'canvas', 'thead', 'tbody', 'tfoot', 'caption', 'h5', 'h6',
+  'code', 'blockquote', 'u', 'sub', 'sup', 'time',
+];
+/** Elements a page's script may create. */
+export const PAGE_CREATE_ELEMENTS = PAGE_TAGS.filter(t => !['html', 'head', 'body', 'meta', 'title', 'script', 'style'].includes(t));
+/** Attributes that may be written in a page's markup (plus aria-* and data-*). */
+export const PAGE_ATTRS = [
+  'id', 'class', 'style', 'title', 'lang', 'dir', 'role', 'hidden', 'tabindex',
+  'type', 'name', 'value', 'placeholder', 'for', 'checked', 'selected', 'disabled', 'readonly', 'required',
+  'min', 'max', 'step', 'minlength', 'maxlength', 'rows', 'cols', 'size', 'multiple', 'autocomplete',
+  'spellcheck', 'inputmode', 'open', 'colspan', 'rowspan', 'scope', 'width', 'height', 'low', 'high', 'optimum',
+  'charset', 'content',
+];
+export const PAGE_INPUT_TYPES = ['text', 'number', 'checkbox', 'radio', 'search', 'range', 'date', 'time', 'color', 'button'];
+/** The only named character codes a page may use. */
+export const PAGE_ENTITIES = ['amp', 'lt', 'gt', 'quot', 'apos', 'nbsp', 'copy', 'mdash', 'ndash', 'hellip', 'middot', 'times', 'rarr', 'larr', 'bull'];
+/** The only ways a page may use localStorage, each with the key written in place. */
+export const PAGE_STORAGE_CALLS = ['getItem', 'setItem', 'removeItem'];
+/** Names from FORBIDDEN_NAMES that a page (and only a page) may use, under the token rules in checkJs. */
+export const PAGE_ALLOWED_NAMES = ['localStorage'];
 
 /** Words refused anywhere in the code, comments and text included (case-sensitive). */
 export const FORBIDDEN_NAMES = {
@@ -196,9 +225,10 @@ function collapse(text: string): string {
   return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(['"`])\s*\+\s*(['"`])/g, '');
 }
 
-function rawScan(path: string, text: string, rep: Report, opts: { urls: boolean }): void {
+function rawScan(path: string, text: string, rep: Report, opts: { urls: boolean; allow?: readonly string[] }): void {
   for (const variant of [text, collapse(text)]) {
     for (const rule of RAW_RULES) {
+      if (opts.allow?.includes(rule.label)) continue;
       if (rule.re.test(variant)) rep.fail(rule.reason, `${path}: uses ${rule.label}`);
     }
     if (opts.urls) {
@@ -526,6 +556,7 @@ function checkJs(src: string, env: JsEnv, rep: Report, usage: Usage): void {
   const bound = new Set<number>();
   // Taking properties apart ({ a, b } = thing) can rename a property, which would hide it from the rules below.
   let objectPattern = false;
+  let memberPattern = false;
   for (let i = 0; i < N; i++) {
     if (isP(i, '(')) {
       const c = match[i];
@@ -542,9 +573,12 @@ function checkJs(src: string, env: JsEnv, rep: Report, usage: Usage): void {
       for (let k = match[i] + 1; k < i; k++) {
         if (T[k].t === 'id') bound.add(k);
         if (isP(k, '{')) objectPattern = true;
+        // [link.host] = [...] would set a property without an "=" after its name.
+        if (isP(k, '.') || isP(k, '?.')) memberPattern = true;
       }
     }
   }
+  if (memberPattern) rep.fail(REASONS.unclear, `${path}: assigns to a property through a list pattern ([a.b] = ...). Assign each one on its own line`);
 
   if (objectPattern) rep.fail(REASONS.unclear, `${path}: takes an object apart with { } (object destructuring). Read each property with a dot instead`);
 
@@ -631,6 +665,10 @@ function checkJs(src: string, env: JsEnv, rep: Report, usage: Usage): void {
       continue;
     }
 
+    // A pattern can spell a web address that never shows up as text (/https:\/\/.../.source).
+    if (tok.t === 're' && kind === 'page' && /\\\/\\\/|:\\\/|\/\//.test(tok.v.slice(1))) {
+      rep.fail(REASONS.net, `${path}: has a pattern that looks like a web address`);
+    }
     if (tok.t !== 'id') continue;
     const name = tok.v;
     const prop = isProp(i);
@@ -693,9 +731,16 @@ function checkJs(src: string, env: JsEnv, rep: Report, usage: Usage): void {
         if (!ok) rep.fail(REASONS.dyn, `${path}: calls ${name} with something other than a function written in place`);
         break;
       }
+      case 'localStorage': {
+        // Pages only (the raw scan refuses the name for every other kind): three calls, key written in place.
+        const ok = kind === 'page' && !prop && isP(i + 1, '.') && isId(i + 2) && PAGE_STORAGE_CALLS.includes(T[i + 2].v)
+          && isP(i + 3, '(') && plainStr(i + 4) && (isP(i + 5, ',') || isP(i + 5, ')'));
+        if (!ok) rep.fail(REASONS.secret, `${path}: uses localStorage for something other than localStorage.getItem('key'), localStorage.setItem('key', text) or localStorage.removeItem('key'), with the key written in place`);
+        break;
+      }
       case 'createElement': {
         const lit = isP(i + 1, '(') && plainStr(i + 2) && isP(i + 3, ')');
-        if (!lit || !ALLOWED_ELEMENTS.includes(T[i + 2].v)) {
+        if (!lit || !(kind === 'page' ? PAGE_CREATE_ELEMENTS : ALLOWED_ELEMENTS).includes(T[i + 2].v)) {
           rep.fail(REASONS.element, `${path}: creates ${lit ? `a <${T[i + 2].v.slice(0, 20)}> element` : 'an element whose kind is not written in place'}`);
           break;
         }
@@ -884,6 +929,125 @@ function checkHtml(source: string, env: { path: string; bundle: Set<string>; fra
   }
 }
 
+// ── 5b. A page: one self-contained HTML file ──
+//
+// The page's own <script> and <style> are cut out first and checked with the
+// JavaScript and CSS rules; what is left must be plain tags from PAGE_TAGS with
+// attributes from PAGE_ATTRS. The grammar is deliberately much narrower than
+// HTML so that this reading and a browser's reading cannot disagree about
+// where a tag, an attribute value or the script begins and ends.
+
+// Only the four plain HTML spaces count as space here. JavaScript's \s also matches characters
+// (a no-break space, for one) that a browser treats as ordinary text, and the two must agree.
+const PAGE_START = /^[ \t\r\n]*(?:<!doctype html>[ \t\r\n]*)?<html(?: lang="[a-zA-Z-]{2,12}")?>[ \t\r\n]*<head>/i;
+const PAGE_TAG_RE = /<(\/?)([a-zA-Z][a-zA-Z0-9]*)([^<>]*)>/g;
+const PAGE_ATTR_SRC = '[ \\t\\r\\n]+([a-zA-Z][a-zA-Z0-9-]*)(?:=(?:"([^"<>]*)"|\'([^\'<>]*)\'|([A-Za-z0-9_.#-]+)))?';
+const PAGE_ATTRS_RE = new RegExp(`^(?:${PAGE_ATTR_SRC})*[ \\t\\r\\n]*$`);
+const PAGE_ENTITY_BAD = new RegExp(`&(?!(?:${PAGE_ENTITIES.join('|')});|\\s|$)`);
+const PAGE_ADDRESS_ATTRS = new Set(['src', 'srcset', 'href', 'action', 'formaction', 'ping', 'poster', 'background', 'data', 'srcdoc', 'manifest', 'cite', 'longdesc', 'usemap', 'target', 'download', 'rel']);
+
+function checkPage(source: string, path: string, rep: Report, usage: Usage): void {
+  const bad = (reason: string, detail: string): void => rep.fail(reason, `${path}: ${detail}`);
+
+  if (source.includes('<!--')) { bad(REASONS.unclear, 'has "<!--". Leave HTML comments out (use // or /* */ comments inside the script and /* */ inside the style)'); return; }
+  if (!PAGE_START.test(source)) { bad(REASONS.shape, 'must begin exactly with <!doctype html>, then <html lang="en">, then <head>'); return; }
+  if ((source.match(/<head(?![a-zA-Z0-9])/gi) || []).length !== 1) { bad(REASONS.shape, 'must have exactly one <head>, and "<head" must not appear anywhere else'); return; }
+
+  // Cut out <script> and <style>. Both must be written with no attributes, so the opening tag cannot be misread.
+  const blocks: Array<{ name: string; content: string }> = [];
+  let markup = '';
+  let pos = 0;
+  const OPEN = /<(script|style)(?![a-zA-Z0-9])/gi;
+  for (;;) {
+    OPEN.lastIndex = pos;
+    const m = OPEN.exec(source);
+    if (!m) { markup += source.slice(pos); break; }
+    const name = m[1].toLowerCase();
+    const openEnd = m.index + m[0].length;
+    if (source[openEnd] !== '>') { bad(REASONS.unclear, `has a <${name}> tag with attributes. Write exactly <${name}>`); return; }
+    // A browser ends the block at the first "</script" or "</style", so that is where this must end it too.
+    const close = source.slice(openEnd + 1).search(name === 'script' ? /<\/script/i : /<\/style/i) + openEnd + 1;
+    const closeTag = close <= openEnd ? null : /^<\/[a-zA-Z]+[ \t\r\n]*>/.exec(source.slice(close, close + name.length + 12));
+    if (!closeTag || closeTag[0].replace(/[ \t\r\n]/g, '').toLowerCase() !== `</${name}>`) { bad(REASONS.unclear, `has a <${name}> tag that is not closed with </${name}>`); return; }
+    blocks.push({ name, content: source.slice(openEnd + 1, close) });
+    markup += source.slice(pos, m.index) + `<${name}></${name}>`;
+    pos = close + closeTag[0].length;
+  }
+  if (blocks.filter(b => b.name === 'script').length > 1) { bad(REASONS.unclear, 'has more than one <script>. Put all the code in one <script> at the end of <body>'); return; }
+
+  // ── Markup ──
+  const text = markup.replace(/^[ \t\r\n]*<!doctype html>/i, '');
+  if (text.includes('//')) bad(REASONS.net, 'has "//" in the markup (looks like a web address)');
+  if (PAGE_ENTITY_BAD.test(text)) bad(REASONS.obf, `uses "&" for something other than these character codes: ${PAGE_ENTITIES.map(e => `&${e};`).join(' ')}`);
+  const tags: Array<{ close: boolean; name: string; attrs: string; end: number }> = [];
+  PAGE_TAG_RE.lastIndex = 0;
+  for (let m = PAGE_TAG_RE.exec(text); m; m = PAGE_TAG_RE.exec(text)) {
+    tags.push({ close: m[1] === '/', name: m[2].toLowerCase(), attrs: m[3] || '', end: m.index + m[0].length });
+  }
+  if (/[<>]/.test(text.replace(PAGE_TAG_RE, ' '))) { bad(REASONS.unclear, 'has HTML Fibb cannot read. Write a "<" or ">" in visible text as &lt; or &gt;'); return; }
+
+  for (const tag of tags) {
+    if (!PAGE_TAGS.includes(tag.name)) {
+      bad(REASONS.element, `has a <${tag.name.slice(0, 20)}> tag${tag.name === 'form' ? '. Use plain inputs and buttons with addEventListener instead of a form' : tag.name === 'a' ? '. A page may not have links' : ''}`);
+      continue;
+    }
+    if (tag.close) {
+      if (/[^ \t\r\n]/.test(tag.attrs)) bad(REASONS.unclear, `has a closing </${tag.name}> tag with something extra in it`);
+      continue;
+    }
+    // <title> and <textarea> hold text only: a browser reads everything up to the closing tag as text.
+    if (tag.name === 'title' || tag.name === 'textarea') {
+      const next = text.indexOf('<', tag.end);
+      if (next < 0 || !text.slice(next, next + tag.name.length + 3).toLowerCase().startsWith(`</${tag.name}`)) {
+        bad(REASONS.unclear, `has a tag inside <${tag.name}>. Only plain text may go there`);
+      }
+    }
+    let body = tag.attrs;
+    if (body === '/') body = '';
+    else body = body.replace(/(["'])\/$/, '$1').replace(/[ \t\r\n]+\/$/, '');
+    if (!PAGE_ATTRS_RE.test(body)) {
+      bad(REASONS.unclear, `has a <${tag.name}> tag whose attributes Fibb cannot read. Write each one as name="value" with a space before it`);
+      continue;
+    }
+    const attrs = new Map<string, string>();
+    const each = new RegExp(PAGE_ATTR_SRC, 'g');
+    let duplicate = false;
+    for (let m = each.exec(body); m; m = each.exec(body)) {
+      const attr = m[1].toLowerCase();
+      if (attrs.has(attr)) duplicate = true;
+      attrs.set(attr, m[2] ?? m[3] ?? m[4] ?? '');
+    }
+    if (duplicate) { bad(REASONS.unclear, `has a <${tag.name}> tag with the same attribute twice`); continue; }
+    if (tag.name === 'script' || tag.name === 'style') continue; // no attributes: checked above
+
+    for (const [attr, value] of attrs) {
+      if (/^on/.test(attr)) { bad(REASONS.dyn, `has an inline event handler (${attr.slice(0, 20)}). Use addEventListener in the script instead`); continue; }
+      if (attr === 'http-equiv') { bad(REASONS.access, 'has a <meta http-equiv> tag. Leave it out: Fibb adds the page protections itself'); continue; }
+      if (PAGE_ADDRESS_ATTRS.has(attr)) { bad(REASONS.net, `has the attribute "${attr}" on <${tag.name}>, which can point at the internet`); continue; }
+      if (!PAGE_ATTRS.includes(attr) && !/^(aria|data)-[a-z0-9-]+$/.test(attr)) { bad(REASONS.unclear, `has the attribute "${attr.slice(0, 20)}" on <${tag.name}>`); continue; }
+      if ((attr === 'content' || attr === 'charset') && tag.name !== 'meta') bad(REASONS.unclear, `has the attribute "${attr}" on <${tag.name}>`);
+      if (attr === 'style') {
+        if (value.includes('&')) bad(REASONS.obf, 'has "&" inside a style attribute');
+        checkCss(value, path, rep);
+      }
+    }
+    if (tag.name === 'meta') {
+      const charset = attrs.size === 1 && (attrs.get('charset') || '').toLowerCase() === 'utf-8';
+      const viewport = attrs.size === 2 && (attrs.get('name') || '').toLowerCase() === 'viewport' && /^[a-zA-Z0-9=,.\s-]+$/.test(attrs.get('content') || '');
+      if (!charset && !viewport) bad(REASONS.unclear, 'has a <meta> tag other than <meta charset="utf-8"> or the viewport one');
+    }
+    if (tag.name === 'input' && !['', ...PAGE_INPUT_TYPES].includes((attrs.get('type') || '').toLowerCase())) {
+      bad(REASONS.unclear, `has an <input> of a kind Fibb does not allow (allowed: ${PAGE_INPUT_TYPES.join(', ')})`);
+    }
+  }
+
+  // ── Style and script ──
+  for (const block of blocks) {
+    if (block.name === 'style') checkCss(block.content, path, rep);
+    else checkJs(block.content, { kind: 'page', path, bundle: new Set() }, rep, usage);
+  }
+}
+
 // ── 6. Extension manifest ──
 
 const MATCH_RE = /^(\*|https?):\/\/(\*|(?:\*\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*)\/.*$/;
@@ -969,7 +1133,7 @@ function checkManifest(text: string, bundle: Set<string>, opts: CheckOptions, re
 
 const PATH_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const extOf = (p: string) => { const i = p.lastIndexOf('.'); return i < 0 ? '' : p.slice(i); };
-const SINGLE_FILE_TYPES: Record<string, string[]> = { bookmarklet: ['.js'], 'apps-script': ['.gs', '.js'] };
+const SINGLE_FILE_TYPES: Record<string, string[]> = { bookmarklet: ['.js'], 'apps-script': ['.gs', '.js'], page: ['.html'] };
 
 const CHANGE_IDS = ['appendChild', 'append', 'prepend', 'insertBefore', 'replaceWith', 'replaceChild', 'replaceChildren', 'after', 'before',
   'insertAdjacentElement', 'insertAdjacentText', 'remove', 'removeChild', 'classList', 'className', 'splitText', 'surroundContents', 'insertNode'];
@@ -1024,8 +1188,9 @@ export function checkTool(kind: ToolKind, files: ToolFile[], opts: CheckOptions 
     const isManifest = kind === 'extension' && f.path === 'manifest.json';
     checkNormalized(f.path, f.content, rep);
     // Match patterns in the manifest are web addresses by design; its text is checked field by field.
-    rawScan(f.path, f.content, rep, { urls: !isManifest });
+    rawScan(f.path, f.content, rep, { urls: !isManifest, allow: kind === 'page' ? PAGE_ALLOWED_NAMES : undefined });
     if (isManifest) manifest = checkManifest(f.content, bundle, opts, rep);
+    else if (kind === 'page') checkPage(f.content, f.path, rep, usage);
     else if (ext === '.html') checkHtml(f.content, { path: f.path, bundle }, rep);
     else if (ext === '.css') checkCss(f.content, f.path, rep);
     else checkJs(f.content, { kind, path: f.path, bundle }, rep, usage);
@@ -1047,6 +1212,10 @@ export function checkTool(kind: ToolKind, files: ToolFile[], opts: CheckOptions 
     if (auto.length) warnings.push('Part of it runs by itself when you open or edit the document.');
     if (has('createMenu', 'createAddonMenu')) access.push('Runs when you pick it from that menu');
     else if (!auto.length) access.push('Runs when you run it from the script editor');
+  } else if (kind === 'page') {
+    access.push('Runs only in its own tab');
+    if (has('localStorage')) access.push('Can save its own notes in this browser');
+    if (has('clipboard')) access.push('Can copy text to your clipboard');
   } else {
     if (has(...READ_IDS)) access.push('Reads the text on the page you are on');
     if (has('getSelection')) access.push('Reads the text you selected');
@@ -1071,4 +1240,20 @@ export function checkTool(kind: ToolKind, files: ToolFile[], opts: CheckOptions 
  *    the page (reached by a selector) is not followed.
  *  - It does not know which element a variable holds.
  * The tool is still only ever shown to the author as code; Fibb never runs it.
+ *
+ * Pages (kind "page") are different: the author opens them, so they do run.
+ *  - The check is still a deny-list over names plus a narrow HTML grammar. It
+ *    is not a sandbox. The limits that hold even if the check is fooled are
+ *    the Content-Security-Policy Fibb adds (tool-shelf.ts: hardenPage and
+ *    PAGE_CSP_HEADER) and, when Fibb serves the page, the CSP sandbox.
+ *  - A Content-Security-Policy does not stop a page from sending its own tab
+ *    to another address. Only the name rules here stand in the way of that
+ *    (location, open, links, forms and meta refresh are all refused), except
+ *    when the page is shown in a frame inside the Fibb app, where the app's
+ *    own policy refuses any other address in the frame.
+ *  - Saved with "Download" and opened from disk there is no sandbox, only the
+ *    <meta> policy, and localStorage is shared with other local files in some
+ *    browsers.
+ *  - Words on the page are not judged: a page could still show the author
+ *    misleading text, or put something unexpected on the clipboard.
  */

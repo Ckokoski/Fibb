@@ -559,7 +559,8 @@ export class AIRouter {
       if (provider.tier === 'free') freeProviders.push(provider);
       else paidProviders.push(provider);
     }
-    if (freeProviders.length > 0) return freeProviders[0];
+    // Local Ollama is the slowest free option, so it is the last free resort.
+    if (freeProviders.length > 0) return freeProviders.find(p => p.id !== 'ollama') ?? freeProviders[0];
     if (overBudget) return null; // Over budget and no free provider — fail closed.
     return paidProviders[0] ?? null;
   }
@@ -1100,9 +1101,13 @@ export class AIRouter {
     };
   }
 
-  /** First available provider in cheapest-first order, or null. */
+  /**
+   * First available provider in cheapest-first order, or null. Gemini's free
+   * tier comes before local Ollama: both cost nothing, but a local model on an
+   * ordinary computer is far slower, so it is the backup rather than the default.
+   */
   getCheapestAvailableProviderId(): string | null {
-    for (const id of ['ollama', 'gemini', 'deepseek', 'openrouter', 'openai', 'claude']) {
+    for (const id of ['gemini', 'ollama', 'deepseek', 'openrouter', 'openai', 'claude']) {
       if (this.providers.get(id)?.available) return id;
     }
     return null;

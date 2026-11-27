@@ -54,7 +54,10 @@ export function registerBookRoutes(ctx: ApiContext): void {
     if (typeof folder !== 'string' || !folder.trim()) return res.status(400).json({ error: 'Choose the folder your book is in.' });
     if (title !== undefined && typeof title !== 'string') return res.status(400).json({ error: 'title must be a string' });
     try {
-      res.status(201).json({ book: await services.manuscripts.add(folder, title) });
+      const book = await services.manuscripts.add(folder, title);
+      res.status(201).json({ book });
+      // Start the story notes now, in the background, so the author is not left waiting for the hourly pass.
+      try { void services.manuscripts.ensureDigest?.(book.id, { maxChapters: 12, deadlineMs: 5 * 60_000 })?.catch?.(() => {}); } catch { /* notes are best effort */ }
     } catch (err) {
       fail(res, err);
     }

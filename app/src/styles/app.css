@@ -426,3 +426,6 @@ button.task:hover { transform: translateX(3px); background: var(--accent-dim); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* A mini app Fibb made, shown boxed in on the Tools screen */
+.minipage { width: 100%; height: 460px; margin-top: 12px; border: 1px solid var(--line); border-radius: 18px; background: #fbf8f3; }

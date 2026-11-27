@@ -639,7 +639,7 @@ class FibbGateway {
         const provider = this.aiRouter.getCheapestAvailableProviderId();
         if (!provider) throw new Error('no provider');
         const r = await this.aiRouter.complete({
-          provider, system, messages: [{ role: 'user', content: user }], maxTokens: 900, temperature: 0,
+          provider, system, messages: [{ role: 'user', content: user }], maxTokens: 2500, temperature: 0,
         });
         return r.text;
       },
